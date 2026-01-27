@@ -1,21 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
+import { HttpService } from '@nestjs/axios';
 import { Response } from 'express';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class LlmService {
+  constructor(private readonly httpService: HttpService) {}
+
   async streamTokens(prompt: string, res: Response) {
     const url =
       process.env.LLM_NODE_URL || 'http://ubuntu-llm-node:8000/stream';
-    const response = await axios({
-      method: 'post',
-      url,
-      data: { prompt },
-      responseType: 'stream',
-      timeout: 60000,
-    });
+    const response = await firstValueFrom(
+      this.httpService.post(url, { prompt }, { responseType: 'stream', timeout: 60000 })
+    );
     res.setHeader('Content-Type', 'text/event-stream');
-    // Type assertion for NodeJS.ReadableStream
     const stream = response.data as any as NodeJS.ReadableStream;
     if (stream && typeof stream.pipe === 'function') {
       stream.pipe(res);
@@ -27,7 +25,9 @@ export class LlmService {
   async completion(prompt: string) {
     const url =
       process.env.LLM_NODE_URL || 'http://ubuntu-llm-node:8000/completion';
-    const response = await axios.post(url, { prompt });
+    const response = await firstValueFrom(
+      this.httpService.post(url, { prompt })
+    );
     return response.data;
   }
 }

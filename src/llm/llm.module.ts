@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { LlmController } from './llm.controller';
+import { HttpModule } from '@nestjs/axios';
 import { LlmService } from './llm.service';
+import { LlmController } from './llm.controller';
 
 @Module({
-  controllers: [LlmController],
+  imports: [HttpModule],
   providers: [LlmService],
+  controllers: [LlmController],
 })
 export class LlmModule {}
