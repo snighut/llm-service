@@ -38,6 +38,8 @@ export class LlmController {
     // 1. Force remove headers that cause instant HTTP/2 protocol errors in Safari/Chrome
     res.removeHeader('Connection');
     res.removeHeader('Transfer-Encoding');
+    res.removeHeader('Keep-Alive');
+    res.removeHeader('Upgrade');
 
     if (!prompt) {
       return res
@@ -46,11 +48,11 @@ export class LlmController {
     }
 
     try {
-      // 2. Start the LLM stream
-      const stream = await this.llmService.streamTokens(prompt);
-
-      // 3. Signal to the proxy/browser that we are ready to stream
+      // 2. Flush headers IMMEDIATELY so the radio stays open
       res.flushHeaders();
+
+      // 3. Start the LLM stream
+      const stream = await this.llmService.streamTokens(prompt);
 
       // 4. Pipe the data
       stream.pipe(res);
