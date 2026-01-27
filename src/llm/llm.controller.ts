@@ -29,10 +29,14 @@ export class LlmController {
         .json({ error: 'Prompt required' });
     try {
       await this.llmService.streamTokens(prompt, res);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message =
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message?: unknown }).message)
+          : 'Unknown error';
       res
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .json({ error: 'LLM node error', details: err.message });
+        .json({ error: 'LLM node error', details: message });
     }
   }
 
@@ -45,10 +49,14 @@ export class LlmController {
     try {
       const result = await this.llmService.completion(prompt);
       res.json(result);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message =
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message?: unknown }).message)
+          : 'Unknown error';
       res
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .json({ error: 'LLM node error', details: err.message });
+        .json({ error: 'LLM node error', details: message });
     }
   }
 }
