@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Res, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Res,
+  HttpStatus,
+  Header,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { LlmService } from './llm.service';
 
@@ -22,6 +30,9 @@ export class LlmController {
   }
 
   @Post('stream')
+  @Header('Content-Type', 'text/event-stream') // Standard for streaming
+  @Header('Cache-Control', 'no-cache')
+  @Header('Connection', 'keep-alive')
   async stream(@Body('prompt') prompt: string, @Res() res: Response) {
     if (!prompt)
       return res
