@@ -6,7 +6,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app: INestApplication = await NestFactory.create(AppModule);
-  await app.listen(3002, '0.0.0.0'); // <--- Add '0.0.0.0' here
 
   // Security
   app.use(helmet());
@@ -43,7 +42,7 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = process.env.PORT || 3002;
-  // await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   console.log(`🚀 Application is running on: http://localhost:${port}/api/v1`);
   console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
