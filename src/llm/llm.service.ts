@@ -1,26 +1,24 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { Response } from 'express';
 import { firstValueFrom } from 'rxjs';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 
 @Injectable()
 export class LlmService {
   constructor(private readonly httpService: HttpService) {}
 
-  async streamTokens(prompt: string, res: Response): Promise<void> {
-    const url = process.env.OLLAMA_HOST || 'http://ubuntu-llm-node:8000';
+  async streamTokens(prompt: string): Promise<Readable> {
+    const url = process.env.OLLAMA_HOST;
 
     try {
       const response = await firstValueFrom(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-        this.httpService.post<Readable>(
-          `${url}/api/generate`, // Correct Ollama endpoint
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        this.httpService.post<unknown>(
+          `${url}/api/generate`,
           {
-            model: 'mistral-nemo:latest', // Replace with your actual model name
+            model: 'mistral-nemo:latest',
             prompt: prompt,
-            stream: true, // Explicitly enable streaming
+            stream: true,
           },
           {
             responseType: 'stream',
@@ -29,48 +27,36 @@ export class LlmService {
         ),
       );
 
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
+      // This transformer converts Ollama JSON chunks into plain text tokens
+      const tokenExtractor = new Transform({
+        transform(chunk: Buffer, encoding, callback) {
+          try {
+            const raw = chunk.toString();
+            // Ollama sends chunks that might contain multiple JSON objects
+            const lines = raw.split('\n').filter((l) => l.trim());
 
-      const stream: Readable = response.data as Readable;
-
-      stream.on('data', (chunk) => {
-        res.write(chunk);
+            for (const line of lines) {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              const json = JSON.parse(line);
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              if (json.response) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                this.push(json.response); // Push just the text part
+              }
+            }
+          } catch {
+            // Log if a chunk isn't valid JSON, but don't kill the stream
+            console.warn('Could not parse chunk:', chunk.toString());
+          }
+          callback();
+        },
       });
 
-      stream.on('end', () => {
-        res.end();
-      });
-
-      stream.on('error', (err) => {
-        console.error('Stream error:', err);
-        if (!res.headersSent) {
-          res.status(500).send('Stream processing failed');
-        } else {
-          res.end();
-        }
-      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      return (response.data as NodeJS.ReadableStream).pipe(tokenExtractor);
     } catch (error) {
-      console.error('LLM Node Connection Error:', (error as Error).message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to connect to LLM node' });
-      }
-    }
-  }
-
-  async completion(prompt: string): Promise<any> {
-    const url =
-      process.env.OLLAMA_HOST || 'http://ubuntu-llm-node:8000/completion';
-    try {
-      // 1. Await the AxiosResponse and ensure the type is any for .data access
-      const response = await firstValueFrom(
-        this.httpService.post<any>(url, { prompt }),
-      );
-      return response.data;
-    } catch (error) {
-      console.error('LLM completion error:', (error as Error).message);
-      throw new InternalServerErrorException('LLM completion failed');
+      console.error('LLM Connection Error:', (error as Error).message);
+      throw new InternalServerErrorException('Failed to connect to LLM node');
     }
   }
 }
