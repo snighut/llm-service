@@ -69,9 +69,13 @@ export class LlmService {
               const json: { response?: string; done?: boolean } =
                 JSON.parse(line);
               if (json.response) {
-                this.push(json.response); // Push just the text part
+                // SSE format: must start with 'data: ' and end with TWO newlines
+                this.push(`data: ${json.response}\n\n`);
+                // this.push(json.response); // Push just the text part
               }
               if (json.done) {
+                // Optional: signal the end of the stream
+                this.push('data: [DONE]\n\n');
                 this.push(null); // Explicitly end the stream when Ollama is done
               }
             }
