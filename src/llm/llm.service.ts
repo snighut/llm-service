@@ -44,8 +44,9 @@ export class LlmService {
             prompt: prompt,
             stream: true,
             options: {
-              num_predict: 50, // Guard: stops generation after ~50 tokens
-              stop: ['\n'], // Guard: stops generation at newline// Guard: stops if the LLM tries to start a new paragraph
+              num_predict: 100, // Guard: stops generation after ~50 tokens
+              stop: [], // Better to let the model decide when it's done unless you have a specific UI constraint
+              num_ctx: 4096,
               temperature: 0.7, // Optional: keeps responses creative but focused
             },
           },
