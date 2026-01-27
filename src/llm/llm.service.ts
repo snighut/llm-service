@@ -16,8 +16,12 @@ export class LlmService {
       const response = await firstValueFrom(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
         this.httpService.post<Readable>(
-          `${url}/stream`,
-          { prompt },
+          `${url}/api/generate`, // Correct Ollama endpoint
+          {
+            model: 'mistral-nemo:latest', // Replace with your actual model name
+            prompt: prompt,
+            stream: true, // Explicitly enable streaming
+          },
           {
             responseType: 'stream',
             timeout: 60000,
