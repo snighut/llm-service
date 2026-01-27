@@ -40,7 +40,6 @@ export class LlmController {
         .json({ error: 'Prompt required' });
     try {
       const stream = await this.llmService.streamTokens(prompt);
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       stream.pipe(res);
     } catch (err: unknown) {
       const message =
