@@ -30,30 +30,47 @@ export class LlmController {
     return res.json({ valid: true });
   }
 
-  @Get('stream') // Changed to GET to improve mobile carrier streaming stability
-  @Header('Content-Type', 'text/event-stream') // Standard for streaming
-  @Header('Cache-Control', 'no-cache, no-transform') // no-transform is key for Cloudflare
-  @Header('X-Accel-Buffering', 'no') // Standard for disabling Nginx/proxy buffering
+  @Get('stream') // GET is more reliable for mobile carriers
+  @Header('Content-Type', 'text/event-stream')
+  @Header('Cache-Control', 'no-cache, no-transform') // no-transform tells Cloudflare not to buffer
+  @Header('X-Accel-Buffering', 'no') // Disables Nginx/proxy buffering
   async stream(@Query('prompt') prompt: string, @Res() res: Response) {
-    // Changed @Body to @Query since we are now using GET parameters
-    if (!prompt)
+    // 1. Force remove headers that cause instant HTTP/2 protocol errors in Safari/Chrome
+    res.removeHeader('Connection');
+    res.removeHeader('Transfer-Encoding');
+
+    if (!prompt) {
       return res
         .status(HttpStatus.BAD_REQUEST)
         .json({ error: 'Prompt required' });
+    }
+
     try {
-      // Optional but helpful: ensure headers are sent immediately
+      // 2. Start the LLM stream
+      const stream = await this.llmService.streamTokens(prompt);
+
+      // 3. Signal to the proxy/browser that we are ready to stream
       res.flushHeaders();
 
-      const stream = await this.llmService.streamTokens(prompt);
+      // 4. Pipe the data
       stream.pipe(res);
+
+      // 5. CRITICAL: Cleanup if the user closes the tab or the mobile carrier drops the signal
+      res.on('close', () => {
+        stream.destroy();
+      });
     } catch (err: unknown) {
       const message =
         typeof err === 'object' && err !== null && 'message' in err
           ? String((err as { message?: unknown }).message)
           : 'Unknown error';
-      res
-        .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .json({ error: 'LLM node error', details: message });
+
+      // Only send error if headers haven't been sent yet
+      if (!res.headersSent) {
+        res
+          .status(HttpStatus.INTERNAL_SERVER_ERROR)
+          .json({ error: 'LLM node error', details: message });
+      }
     }
   }
 
