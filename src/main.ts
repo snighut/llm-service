@@ -43,7 +43,7 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = process.env.PORT || 3002;
-  await app.listen(port);
+  // await app.listen(port);
 
   console.log(`🚀 Application is running on: http://localhost:${port}/api/v1`);
   console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
