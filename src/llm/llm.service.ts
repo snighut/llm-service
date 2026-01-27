@@ -7,6 +7,32 @@ import { Readable, Transform } from 'stream';
 export class LlmService {
   constructor(private readonly httpService: HttpService) {}
 
+  async completion(prompt: string): Promise<any> {
+    const url = process.env.OLLAMA_HOST;
+    try {
+      const response = await firstValueFrom(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        this.httpService.post(
+          `${url}/api/generate`,
+          {
+            model: 'mistral-nemo:latest',
+            prompt: prompt,
+            stream: false,
+          },
+          {
+            timeout: 60000,
+          },
+        ),
+      );
+      return response.data;
+    } catch (error) {
+      console.error('LLM Completion Error:', (error as Error).message);
+      throw new InternalServerErrorException(
+        'Failed to get completion from LLM node',
+      );
+    }
+  }
+
   async streamTokens(prompt: string): Promise<Readable> {
     const url = process.env.OLLAMA_HOST;
 
@@ -52,7 +78,6 @@ export class LlmService {
         },
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       return (response.data as NodeJS.ReadableStream).pipe(tokenExtractor);
     } catch (error) {
       console.error('LLM Connection Error:', (error as Error).message);

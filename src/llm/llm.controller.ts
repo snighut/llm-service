@@ -49,7 +49,7 @@ export class LlmController {
         .status(HttpStatus.BAD_REQUEST)
         .json({ error: 'Prompt required' });
     try {
-      const result = await this.llmService.completion(prompt);
+      const result: unknown = await this.llmService.completion(prompt);
       res.json(result);
     } catch (err: unknown) {
       const message =
