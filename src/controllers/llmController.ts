@@ -1,18 +1,16 @@
-const llmService = require('../services/llmService');
-const axios = require('axios');
+import { Request, Response } from 'express';
+import { queryLLM } from '../services/llmService';
+import axios from 'axios';
 
-// Validate prompt (basic example)
-exports.validatePrompt = (req, res) => {
+export const validatePrompt = (req: Request, res: Response) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.length > 2048) {
     return res.status(400).json({ valid: false, reason: 'Invalid or too long prompt' });
   }
-  // Add more security/content checks as needed
   res.json({ valid: true });
 };
 
-// Stream tokens from LLM (proxy streaming)
-exports.streamTokens = async (req, res) => {
+export const streamTokens = async (req: Request, res: Response) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'Prompt required' });
   try {
@@ -25,19 +23,18 @@ exports.streamTokens = async (req, res) => {
     });
     res.setHeader('Content-Type', 'text/event-stream');
     response.data.pipe(res);
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ error: 'LLM node error', details: err.message });
   }
 };
 
-// Non-streaming completion
-exports.completion = async (req, res) => {
+export const completion = async (req: Request, res: Response) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'Prompt required' });
   try {
-    const result = await llmService.queryLLM(prompt);
+    const result = await queryLLM(prompt);
     res.json(result);
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ error: 'LLM node error', details: err.message });
   }
 };
