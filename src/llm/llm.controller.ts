@@ -33,12 +33,12 @@ export class LlmController {
   @Get('stream') // GET is more reliable for mobile carriers
   @Header('Content-Type', 'text/event-stream')
   @Header('Cache-Control', 'no-cache, no-transform') // no-transform tells Cloudflare not to buffer
+  @Header('Connection', 'keep-alive') // Explicitly for Safari
   @Header('X-Accel-Buffering', 'no') // Disables Nginx/proxy buffering
   async stream(@Query('prompt') prompt: string, @Res() res: Response) {
     // 1. Force remove headers that cause instant HTTP/2 protocol errors in Safari/Chrome
     res.removeHeader('Connection');
     res.removeHeader('Transfer-Encoding');
-    res.removeHeader('Keep-Alive');
     res.removeHeader('Upgrade');
 
     if (!prompt) {
