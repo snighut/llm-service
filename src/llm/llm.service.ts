@@ -10,14 +10,13 @@ export class LlmService {
   constructor(private readonly httpService: HttpService) {}
 
   async streamTokens(prompt: string, res: Response): Promise<void> {
-    const url =
-      process.env.LLM_NODE_URL || 'http://ubuntu-llm-node:8000/stream';
+    const url = process.env.OLLAMA_HOST || 'http://ubuntu-llm-node:8000';
 
     try {
       const response = await firstValueFrom(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
         this.httpService.post<Readable>(
-          url,
+          `${url}/stream`,
           { prompt },
           {
             responseType: 'stream',
@@ -58,7 +57,7 @@ export class LlmService {
 
   async completion(prompt: string): Promise<any> {
     const url =
-      process.env.LLM_NODE_URL || 'http://ubuntu-llm-node:8000/completion';
+      process.env.OLLAMA_HOST || 'http://ubuntu-llm-node:8000/completion';
     try {
       // 1. Await the AxiosResponse and ensure the type is any for .data access
       const response = await firstValueFrom(
