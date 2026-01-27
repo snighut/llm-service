@@ -1,15 +1,44 @@
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "type": "pwa-node",
-      "request": "launch",
-      "name": "Run LLM Service (TypeScript)",
-      "program": "${workspaceFolder}/src/index.ts",
-      "preLaunchTask": "tsc: build - tsconfig.json",
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "envFile": "${workspaceFolder}/.env",
-      "cwd": "${workspaceFolder}"
-    }
-  ]
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug NestJS App",
+			"runtimeArgs": [
+				"-r",
+				"ts-node/register"
+			],
+			"args": [
+				"${workspaceFolder}/src/main.ts"
+			],
+			"cwd": "${workspaceFolder}",
+			"protocol": "inspector",
+			"env": {
+				"TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.json"
+			},
+			"autoAttachChildProcesses": true,
+			"sourceMaps": true,
+			"outFiles": [
+				"${workspaceFolder}/dist/**/*.js"
+			],
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Run Compiled App",
+			"program": "${workspaceFolder}/dist/src/main.js",
+			"cwd": "${workspaceFolder}",
+			"protocol": "inspector",
+			"env": {},
+			"autoAttachChildProcesses": true,
+			"sourceMaps": true,
+			"outFiles": [
+				"${workspaceFolder}/dist/**/*.js"
+			],
+			"console": "integratedTerminal"
+		}
+	]
 }
+
