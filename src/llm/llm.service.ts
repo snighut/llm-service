@@ -91,7 +91,7 @@ export class LlmService {
       // 1. INITIAL WAKE-UP: Send ~1KB of "invisible" padding.
       // Starting with ":" makes this an SSE comment, which browsers ignore.
       // This forces mobile carriers and Cloudflare to flush the buffer immediately.
-      outputStream.push(`: ${' '.repeat(1024)}\n\n`);
+      outputStream.push(`: ${' '.repeat(4096)}\n\n`);
 
       // 2. HEARTBEAT: Keep it small but use the SSE comment format ": heartbeat"
       // This ensures the connection stays open without adding spaces to your chat UI.
