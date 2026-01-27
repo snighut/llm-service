@@ -45,6 +45,10 @@ export class LlmService {
             model: 'mistral-nemo:latest',
             prompt: prompt,
             stream: true,
+            options: {
+              num_predict: 40, // Limit tokens to roughly 120-140 characters
+              stop: ['\n'], // Optional: stop at first newline to keep it concise
+            },
           },
           {
             responseType: 'stream',
