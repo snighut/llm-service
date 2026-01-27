@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Res, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import { LlmService } from './llm.service';
 
-@Controller('v1/llm')
+@Controller('llm')
 export class LlmController {
   constructor(private readonly llmService: LlmService) {}
 
