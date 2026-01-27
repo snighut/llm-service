@@ -1,5 +1,4 @@
 
-node_modules/
 dist/
 *.log
 .env
@@ -15,3 +14,13 @@ coverage/
 *.local
 *.secret
 *.DS_Store
+
+# Node modules and build output
+node_modules/
+dist/
+build/
+out/
+
+# Logs
+*.log
+npm-debug.log*
