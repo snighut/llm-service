@@ -6,6 +6,7 @@ import {
   Res,
   HttpStatus,
   Header,
+  Query,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { LlmService } from './llm.service';
@@ -29,12 +30,13 @@ export class LlmController {
     return res.json({ valid: true });
   }
 
-  @Post('stream')
+  @Get('stream') // Changed to GET to improve mobile carrier streaming stability
   @Header('Content-Type', 'text/event-stream') // Standard for streaming
   @Header('Cache-Control', 'no-cache, no-transform') // no-transform is key for Cloudflare
   @Header('Connection', 'keep-alive')
   @Header('X-Accel-Buffering', 'no') // Standard for disabling Nginx/proxy buffering
-  async stream(@Body('prompt') prompt: string, @Res() res: Response) {
+  async stream(@Query('prompt') prompt: string, @Res() res: Response) {
+    // Changed @Body to @Query since we are now using GET parameters
     if (!prompt)
       return res
         .status(HttpStatus.BAD_REQUEST)
