@@ -84,6 +84,8 @@ export class LlmService {
       });
 
       const outputStream = (response.data as Readable).pipe(tokenExtractor);
+      // sending a single byte the millisecond the request starts. It tells the iPhone, "The data is coming, don't wait for a full buffer
+      outputStream.push(' ');
 
       // ADDED: Heartbeat to keep Cloudflare Tunnel alive
       const heartbeat = setInterval(() => {
