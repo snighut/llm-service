@@ -5,6 +5,7 @@
 - `/llm` - Handles LLM requests
 
 ## Example Request
+
 ```
 POST /llm
 {
