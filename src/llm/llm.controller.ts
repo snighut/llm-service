@@ -1,0 +1,42 @@
+import { Controller, Get, Post, Body, Res, HttpStatus } from '@nestjs/common';
+import { Response } from 'express';
+import { LlmService } from './llm.service';
+
+@Controller('v1/llm')
+export class LlmController {
+  constructor(private readonly llmService: LlmService) {}
+
+  @Get('health')
+  health(@Res() res: Response) {
+    return res.status(HttpStatus.OK).json({ status: 'ok' });
+  }
+
+  @Post('validate')
+  validate(@Body('prompt') prompt: string, @Res() res: Response) {
+    if (!prompt || typeof prompt !== 'string' || prompt.length > 2048) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ valid: false, reason: 'Invalid or too long prompt' });
+    }
+    return res.json({ valid: true });
+  }
+
+  @Post('stream')
+  async stream(@Body('prompt') prompt: string, @Res() res: Response) {
+    if (!prompt) return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Prompt required' });
+    try {
+      await this.llmService.streamTokens(prompt, res);
+    } catch (err: any) {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'LLM node error', details: err.message });
+    }
+  }
+
+  @Post('completion')
+  async completion(@Body('prompt') prompt: string, @Res() res: Response) {
+    if (!prompt) return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Prompt required' });
+    try {
+      const result = await this.llmService.completion(prompt);
+      res.json(result);
+    } catch (err: any) {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'LLM node error', details: err.message });
+    }
+  }
+}

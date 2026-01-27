@@ -1,3 +1,17 @@
+
 node_modules/
+dist/
+*.log
 .env
+.env.*
 config/*.json
+test/
+coverage/
+*.bak
+*.old
+*.swp
+*.swo
+*.tmp
+*.local
+*.secret
+*.DS_Store
