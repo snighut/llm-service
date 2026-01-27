@@ -17,11 +17,9 @@ export class LlmService {
           {
             model: 'mistral-nemo:latest',
             prompt: prompt,
-            stream: false,
+            stream: false, // FIXED: Completion should be false to get full JSON back
           },
-          {
-            timeout: 60000,
-          },
+          { timeout: 60000 },
         ),
       );
       return response.data;
@@ -39,15 +37,16 @@ export class LlmService {
     try {
       const response = await firstValueFrom(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        this.httpService.post<unknown>(
+        this.httpService.post<Readable>(
           `${url}/api/generate`,
           {
             model: 'mistral-nemo:latest',
             prompt: prompt,
             stream: true,
             options: {
-              num_predict: 40, // Limit tokens to roughly 120-140 characters
-              stop: ['\n'], // Optional: stop at first newline to keep it concise
+              num_predict: 50, // Guard: stops generation after ~50 tokens
+              stop: ['\n'], // Guard: stops generation at newline// Guard: stops if the LLM tries to start a new paragraph
+              temperature: 0.7, // Optional: keeps responses creative but focused
             },
           },
           {
@@ -67,11 +66,13 @@ export class LlmService {
 
             for (const line of lines) {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              const json = JSON.parse(line);
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              const json: { response?: string; done?: boolean } =
+                JSON.parse(line);
               if (json.response) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
                 this.push(json.response); // Push just the text part
+              }
+              if (json.done) {
+                this.push(null); // Explicitly end the stream when Ollama is done
               }
             }
           } catch {
@@ -82,7 +83,19 @@ export class LlmService {
         },
       });
 
-      return (response.data as NodeJS.ReadableStream).pipe(tokenExtractor);
+      const outputStream = (response.data as Readable).pipe(tokenExtractor);
+
+      // ADDED: Heartbeat to keep Cloudflare Tunnel alive
+      const heartbeat = setInterval(() => {
+        if (!outputStream.destroyed) {
+          outputStream.push(' '); // Send a space every 15s to reset idle timers
+        }
+      }, 15000);
+
+      outputStream.on('close', () => clearInterval(heartbeat));
+      outputStream.on('end', () => clearInterval(heartbeat));
+
+      return outputStream;
     } catch (error) {
       console.error('LLM Connection Error:', (error as Error).message);
       throw new InternalServerErrorException('Failed to connect to LLM node');
