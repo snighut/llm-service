@@ -33,7 +33,6 @@ export class LlmController {
   @Get('stream') // Changed to GET to improve mobile carrier streaming stability
   @Header('Content-Type', 'text/event-stream') // Standard for streaming
   @Header('Cache-Control', 'no-cache, no-transform') // no-transform is key for Cloudflare
-  @Header('Connection', 'keep-alive')
   @Header('X-Accel-Buffering', 'no') // Standard for disabling Nginx/proxy buffering
   async stream(@Query('prompt') prompt: string, @Res() res: Response) {
     // Changed @Body to @Query since we are now using GET parameters
@@ -42,6 +41,9 @@ export class LlmController {
         .status(HttpStatus.BAD_REQUEST)
         .json({ error: 'Prompt required' });
     try {
+      // Optional but helpful: ensure headers are sent immediately
+      res.flushHeaders();
+
       const stream = await this.llmService.streamTokens(prompt);
       stream.pipe(res);
     } catch (err: unknown) {
