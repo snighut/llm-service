@@ -88,15 +88,25 @@ export class LlmService {
       });
 
       const outputStream = (response.data as Readable).pipe(tokenExtractor);
-      // sending a single byte the millisecond the request starts. It tells the iPhone, "The data is coming, don't wait for a full buffer
-      outputStream.push(' ');
+      // 1. INITIAL WAKE-UP: Send ~1KB of "invisible" padding.
+      // Starting with ":" makes this an SSE comment, which browsers ignore.
+      // This forces mobile carriers and Cloudflare to flush the buffer immediately.
+      outputStream.push(`: ${' '.repeat(1024)}\n\n`);
 
-      // ADDED: Heartbeat to keep Cloudflare Tunnel alive
+      // 2. HEARTBEAT: Keep it small but use the SSE comment format ": heartbeat"
+      // This ensures the connection stays open without adding spaces to your chat UI.
       const heartbeat = setInterval(() => {
         if (!outputStream.destroyed) {
-          outputStream.push(' '); // Send a space every 15s to reset idle timers
+          outputStream.push(': heartbeat\n\n');
         }
       }, 15000);
+
+      // ADDED: Heartbeat to keep Cloudflare Tunnel alive
+      // const heartbeat = setInterval(() => {
+      //   if (!outputStream.destroyed) {
+      //     outputStream.push(' '); // Send a space every 15s to reset idle timers
+      //   }
+      // }, 15000);
 
       outputStream.on('close', () => clearInterval(heartbeat));
       outputStream.on('end', () => clearInterval(heartbeat));
