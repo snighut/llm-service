@@ -15,6 +15,8 @@ coverage/
 *.secret
 *.DS_Store
 
+don_not_push.md
+
 # Node modules and build output
 node_modules/
 dist/
