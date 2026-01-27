@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app: INestApplication = await NestFactory.create(AppModule);
+  await app.listen(3002, '0.0.0.0'); // <--- Add '0.0.0.0' here
 
   // Security
   app.use(helmet());
