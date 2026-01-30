@@ -20,11 +20,16 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@langchain/community": "^1.1.9",
+    "@langchain/core": "^1.1.17",
+    "@langchain/ollama": "^1.2.1",
+    "@langchain/openai": "^1.2.3",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.2.5",
+    "@qdrant/js-client-rest": "^1.16.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "helmet": "^8.1.0",
