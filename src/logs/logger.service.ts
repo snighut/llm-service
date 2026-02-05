@@ -3,6 +3,10 @@ import logger from './logger';
 
 @Injectable()
 export class LoggerService extends ConsoleLogger {
+  constructor() {
+    super();
+  }
+
   log(message: string) {
     logger.info(message);
   }

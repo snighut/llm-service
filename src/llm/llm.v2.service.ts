@@ -4,7 +4,16 @@ import { RagService } from './rag.service';
 
 @Injectable()
 export class LlmV2Service {
-  constructor(private readonly ragService: RagService) {}
+  constructor(private readonly ragService: RagService) {
+    try {
+      if (!ragService) {
+        throw new Error('ragService dependency is undefined!');
+      }
+    } catch (err) {
+      console.error('Error initializing LlmV2Service:', err);
+      throw err;
+    }
+  }
 
   async completion(prompt: string): Promise<any> {
     const stream = await this.ragService.getResponse(prompt);

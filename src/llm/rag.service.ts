@@ -18,17 +18,22 @@ export class RagService {
   private readonly embeddings: OllamaEmbeddings;
 
   constructor() {
-    this.qdrantClient = new QdrantClient({
-      url: process.env.QDRANT_URL,
-    });
-    this.ollama = new Ollama({
-      baseUrl: process.env.OLLAMA_HOST,
-      model: 'mistral-nemo:latest',
-    });
-    this.embeddings = new OllamaEmbeddings({
-      model: 'mxbai-embed-large',
-      baseUrl: process.env.OLLAMA_HOST,
-    });
+    try {
+      this.qdrantClient = new QdrantClient({
+        url: process.env.QDRANT_URL,
+      });
+      this.ollama = new Ollama({
+        baseUrl: process.env.OLLAMA_HOST,
+        model: 'mistral-nemo:latest',
+      });
+      this.embeddings = new OllamaEmbeddings({
+        model: 'mxbai-embed-large',
+        baseUrl: process.env.OLLAMA_HOST,
+      });
+    } catch (err) {
+      console.error('Error initializing RagService:', err);
+      throw err;
+    }
   }
 
   async getRelevantDocuments(query: string): Promise<Document[]> {
