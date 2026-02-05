@@ -1,11 +1,59 @@
 import { NestFactory } from '@nestjs/core';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  ValidationPipe,
+  HttpException,
+  ArgumentsHost,
+  Catch,
+  ExceptionFilter,
+  Inject,
+} from '@nestjs/common';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { LoggerService } from './logs/logger.service';
+
+@Catch()
+class AllExceptionsFilter implements ExceptionFilter {
+  constructor(@Inject(LoggerService) private readonly logger: LoggerService) {}
+  catch(exception: unknown, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response: {
+      status: (code: number) => { json: (body: any) => void };
+    } = ctx.getResponse();
+    const request: { url: string } = ctx.getRequest();
+    const status: number =
+      exception instanceof HttpException ? exception.getStatus() : 500;
+    const message: string =
+      exception instanceof HttpException
+        ? exception.message
+        : typeof exception === 'object' &&
+            exception !== null &&
+            'message' in exception
+          ? (exception as { message: string }).message
+          : 'Unknown error';
+    const stack: string =
+      typeof exception === 'object' &&
+      exception !== null &&
+      'stack' in exception
+        ? (exception as { stack: string }).stack
+        : '';
+    this.logger.error(`Boundary error: ${message}`, stack);
+    response.status(status).json({
+      statusCode: status,
+      timestamp: new Date().toISOString(),
+      path: request.url,
+      message,
+    });
+  }
+}
 
 async function bootstrap() {
-  const app: INestApplication = await NestFactory.create(AppModule);
+  const app: INestApplication = await NestFactory.create(AppModule, {
+    logger: false,
+  });
+  app.useLogger(app.get(LoggerService));
+  app.useGlobalFilters(new AllExceptionsFilter(app.get(LoggerService)));
 
   // Security
   app.use(helmet());
@@ -44,15 +92,9 @@ async function bootstrap() {
   const port = process.env.PORT || 3002;
   await app.listen(port, '0.0.0.0');
 
-  console.log(`🚀 Application is running on: http://localhost:${port}/api/v1`);
-  console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
+  const logger = app.get(LoggerService);
+  logger.log(`🚀 Application is running on: http://localhost:${port}/api/v1`);
+  logger.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
 }
 
-bootstrap().catch((error: unknown) => {
-  if (error instanceof Error) {
-    console.error('Application failed to start:', error.message);
-    console.error(error.stack);
-  } else {
-    console.error('Application failed to start with an unknown error:', error);
-  }
-});
+void bootstrap();

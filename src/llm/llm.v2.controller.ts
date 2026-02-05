@@ -12,12 +12,14 @@ import type { Response } from 'express';
 import { LlmV2Service } from './llm.v2.service';
 import { RagService } from './rag.service';
 import { Writable } from 'stream';
+import { LoggerService } from '../logs/logger.service';
 
 @Controller('llm/v2')
 export class LlmV2Controller {
   constructor(
     private readonly llmService: LlmV2Service,
     private readonly ragService: RagService,
+    private readonly logger: LoggerService,
   ) {}
 
   @Get('health')
@@ -41,6 +43,7 @@ export class LlmV2Controller {
   @Header('Connection', 'keep-alive') // Explicitly for Safari
   @Header('X-Accel-Buffering', 'no') // Disables Nginx/proxy buffering
   async rag(@Query('prompt') prompt: string, @Res() res: Response) {
+    this.logger.log(`rag endpoint called with prompt: ${prompt}`);
     // 1. Force remove headers that cause instant HTTP/2 protocol errors in Safari/Chrome
     res.removeHeader('Connection');
     res.removeHeader('Transfer-Encoding');
@@ -68,7 +71,7 @@ export class LlmV2Controller {
 
       // 5. CRITICAL: Cleanup if the user closes the tab or the mobile carrier drops the signal
       res.on('close', () => {
-        stream.cancel();
+        void stream.cancel();
       });
     } catch (err: unknown) {
       const message =
@@ -91,6 +94,7 @@ export class LlmV2Controller {
   @Header('Connection', 'keep-alive') // Explicitly for Safari
   @Header('X-Accel-Buffering', 'no') // Disables Nginx/proxy buffering
   async stream(@Query('prompt') prompt: string, @Res() res: Response) {
+    this.logger.log(`stream endpoint called with prompt: ${prompt}`);
     // 1. Force remove headers that cause instant HTTP/2 protocol errors in Safari/Chrome
     res.removeHeader('Connection');
     res.removeHeader('Transfer-Encoding');

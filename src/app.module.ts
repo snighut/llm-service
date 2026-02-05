@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { LlmModule } from './llm/llm.module';
+import { LoggerService } from './logs/logger.service';
 
 @Module({
   imports: [LlmModule],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, LoggerService],
+  exports: [LoggerService],
 })
 export class AppModule {}
