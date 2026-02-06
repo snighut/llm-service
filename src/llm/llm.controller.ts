@@ -10,9 +10,12 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { LlmService } from './llm.service';
+import { Logger } from '@nestjs/common';
 
 @Controller('llm')
 export class LlmController {
+  private readonly logger = new Logger(LlmController.name);
+
   constructor(private readonly llmService: LlmService) {}
 
   @Get('health')
@@ -22,6 +25,7 @@ export class LlmController {
 
   @Post('validate')
   validate(@Body('prompt') prompt: string, @Res() res: Response) {
+    this.logger.log(`validate endpoint called with prompt: ${prompt}`);
     if (!prompt || typeof prompt !== 'string' || prompt.length > 2048) {
       return res
         .status(HttpStatus.BAD_REQUEST)
@@ -36,6 +40,7 @@ export class LlmController {
   @Header('Connection', 'keep-alive') // Explicitly for Safari
   @Header('X-Accel-Buffering', 'no') // Disables Nginx/proxy buffering
   async stream(@Query('prompt') prompt: string, @Res() res: Response) {
+    this.logger.log(`stream endpoint called with prompt: ${prompt}`);
     // 1. Force remove headers that cause instant HTTP/2 protocol errors in Safari/Chrome
     res.removeHeader('Connection');
     res.removeHeader('Transfer-Encoding');
@@ -78,6 +83,7 @@ export class LlmController {
 
   @Post('completion')
   async completion(@Body('prompt') prompt: string, @Res() res: Response) {
+    this.logger.log(`completion endpoint called with prompt: ${prompt}`);
     if (!prompt)
       return res
         .status(HttpStatus.BAD_REQUEST)
