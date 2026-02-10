@@ -39,7 +39,7 @@ export class LlmV2Service {
             }
           })
           .catch((err) => {
-            this.destroy(err);
+            this.destroy(err instanceof Error ? err : new Error(String(err)));
           });
       },
     });

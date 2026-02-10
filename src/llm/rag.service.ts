@@ -7,7 +7,6 @@ import {
   RunnablePassthrough,
 } from '@langchain/core/runnables';
 import { PromptTemplate } from '@langchain/core/prompts';
-import { Readable } from 'stream';
 
 type Document = Schemas['ScoredPoint'] & { payload: { page_content: string } };
 

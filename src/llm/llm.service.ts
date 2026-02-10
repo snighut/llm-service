@@ -59,7 +59,9 @@ export class LlmService {
             const raw = chunk.toString();
             const lines = raw.split('\n').filter((l) => l.trim());
             for (const line of lines) {
-              const json: { response?: string; done?: boolean } = JSON.parse(line);
+              const json: { response?: string; done?: boolean } = JSON.parse(
+                line,
+              ) as { response?: string; done?: boolean };
               if (json.response) {
                 this.push(`data: ${json.response}\n\n`);
               }
@@ -74,7 +76,7 @@ export class LlmService {
           callback();
         },
       });
-      const outputStream = (response.data as Readable).pipe(tokenExtractor);
+      const outputStream = response.data.pipe(tokenExtractor);
       outputStream.push(`: ${' '.repeat(4096)}\n\n`);
       const heartbeat = setInterval(() => {
         if (!outputStream.destroyed) {
