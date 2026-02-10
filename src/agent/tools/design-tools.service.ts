@@ -4,6 +4,14 @@ import { firstValueFrom } from 'rxjs';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
+interface HttpError {
+  response?: {
+    status?: number;
+    statusText?: string;
+    data?: unknown;
+  };
+}
+
 interface DesignItem {
   id?: string;
   name: string;
@@ -60,7 +68,26 @@ interface LayoutItem {
   type: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
   context?: unknown;
+}
+
+interface UIData {
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  zIndex: number;
+  backgroundColor: string;
+  borderColor: string;
+  borderThickness: number;
+  borderStyle: string;
+  color: string;
+  fontSize: number;
+  fontStyle: string;
 }
 
 /**
@@ -127,12 +154,28 @@ export class DesignToolsService {
           this.logger.log(`Found ${results.length} matching designs`);
           return JSON.stringify(results);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error';
-          this.logger.error(`Error searching designs: ${errorMessage}`);
+          let errorMessage = 'Unknown error';
+          let errorDetails = '';
+
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          }
+
+          // Capture HTTP error details
+          if (error && typeof error === 'object' && 'response' in error) {
+            const httpError = error as HttpError;
+            errorDetails = JSON.stringify({
+              status: httpError.response?.status,
+              statusText: httpError.response?.statusText,
+              data: httpError.response?.data,
+            });
+          }
+
+          const fullError = errorDetails || errorMessage;
+          this.logger.error(`Error searching designs: ${fullError}`);
           return JSON.stringify({
             error: 'Failed to search designs',
-            details: errorMessage,
+            details: fullError,
           });
         }
       },
@@ -193,12 +236,28 @@ export class DesignToolsService {
           );
           return JSON.stringify(result);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error';
-          this.logger.error(`Error fetching design: ${errorMessage}`);
+          let errorMessage = 'Unknown error';
+          let errorDetails = '';
+
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          }
+
+          // Capture HTTP error details
+          if (error && typeof error === 'object' && 'response' in error) {
+            const httpError = error as HttpError;
+            errorDetails = JSON.stringify({
+              status: httpError.response?.status,
+              statusText: httpError.response?.statusText,
+              data: httpError.response?.data,
+            });
+          }
+
+          const fullError = errorDetails || errorMessage;
+          this.logger.error(`Error fetching design: ${fullError}`);
           return JSON.stringify({
             error: 'Failed to fetch design',
-            details: errorMessage,
+            details: fullError,
           });
         }
       },
@@ -212,7 +271,7 @@ export class DesignToolsService {
     return new DynamicStructuredTool({
       name: 'create_system_design',
       description:
-        'Create a new system architecture design with components and connections. This is the final step after planning. Use this when you have determined all the components and their connections.',
+        'Create a new system architecture design with components and connections. REQUIRED: name (string), items (array). OPTIONAL: description, connections. This is the final step after planning. Use this when you have determined all the components and their connections.',
       schema: z.object({
         name: z.string().describe('Name of the system design'),
         description: z
@@ -290,21 +349,23 @@ export class DesignToolsService {
           const itemsWithLayout: LayoutItem[] = this.generateLayout(items);
 
           // Transform connections to match design-service schema
-          const formattedConnections = connectionsArray.map((conn) => ({
+          const formattedConnections = connectionsArray.map((conn, index) => ({
+            name: String(conn.label || 'Connection'),
             from: { name: String(conn.from), type: 'DesignItem' },
             to: { name: String(conn.to), type: 'DesignItem' },
-            name: String(conn.label || 'Connection'),
+            fromPoint: this.getConnectionPoint(index, 'from'),
+            toPoint: this.getConnectionPoint(index, 'to'),
+            uidata: this.generateConnectionUIData(
+              String(conn.label || 'Connection'),
+            ),
             context: conn.context,
           }));
 
-          // Transform items to match design-service schema
-          const formattedItems = itemsWithLayout.map((item) => ({
+          // Transform items to match design-service schema with complete uidata
+          const formattedItems = itemsWithLayout.map((item, index) => ({
+            id: this.generateTempId(item.name, index),
             name: String(item.name),
-            type: String(item.type),
-            uidata: {
-              x: item.x,
-              y: item.y,
-            },
+            uidata: this.generateUIData(item, index),
             context: item.context,
           }));
 
@@ -314,13 +375,20 @@ export class DesignToolsService {
             description: String(
               description || `Auto-generated design: ${name}`,
             ),
-            items: formattedItems,
-            connections: formattedConnections,
+            thumbnail: null,
             context: {
               generatedBy: 'agent',
               timestamp: new Date().toISOString(),
+              tags: this.extractTags(items),
             },
+            items: formattedItems,
+            connections: formattedConnections,
+            designGroups: [],
           };
+
+          this.logger.log(
+            `Sending payload to design-service: ${JSON.stringify(payload, null, 2)}`,
+          );
 
           const response = await firstValueFrom(
             this.httpService.post(
@@ -348,13 +416,33 @@ export class DesignToolsService {
             connectionsCount: formattedConnections.length,
           });
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error';
-          this.logger.error(`Error creating design: ${errorMessage}`);
+          let errorMessage = 'Unknown error';
+          let errorDetails = '';
+
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          }
+
+          // Capture HTTP error details
+          if (error && typeof error === 'object' && 'response' in error) {
+            const httpError = error as HttpError;
+            errorDetails = JSON.stringify({
+              status: httpError.response?.status,
+              statusText: httpError.response?.statusText,
+              data: httpError.response?.data,
+            });
+          }
+
+          const fullError = errorDetails || errorMessage;
+          this.logger.error(`Error creating design: ${fullError}`);
+          this.logger.error(
+            `Payload that failed: ${JSON.stringify({ name, description, itemsCount: items.length, connectionsCount: (connections || []).length })}`,
+          );
+
           return JSON.stringify({
             success: false,
             error: 'Failed to create design',
-            details: errorMessage,
+            details: fullError,
           });
         }
       },
@@ -365,24 +453,162 @@ export class DesignToolsService {
    * Generate layout for items if positions are not provided
    */
   private generateLayout(items: CreateDesignItem[]): LayoutItem[] {
-    const SPACING_X = 250;
-    const SPACING_Y = 200;
     const START_X = 100;
     const START_Y = 100;
-    const ITEMS_PER_ROW = 4;
+    const SPACING = 50;
+    const ITEMS_PER_ROW = 3;
 
     return items.map((item, index) => {
+      const dimensions = this.getTypeDimensions();
       const row = Math.floor(index / ITEMS_PER_ROW);
       const col = index % ITEMS_PER_ROW;
 
       return {
         name: item.name,
         type: item.type,
-        x: item.x !== undefined ? item.x : START_X + col * SPACING_X,
-        y: item.y !== undefined ? item.y : START_Y + row * SPACING_Y,
+        x:
+          item.x !== undefined
+            ? item.x
+            : START_X + col * (dimensions.width + SPACING),
+        y:
+          item.y !== undefined
+            ? item.y
+            : START_Y + row * (dimensions.height + SPACING),
+        width: dimensions.width,
+        height: dimensions.height,
         context: item.context,
       };
     });
+  }
+
+  /**
+   * Get default dimensions based on component type
+   * Using simpler dimensions that match working examples
+   */
+  private getTypeDimensions(): { width: number; height: number } {
+    // All types use text-like dimensions for better UI rendering
+    return { width: 120, height: 40 };
+  }
+
+  /**
+   * Get type-specific styling - No longer used, kept for backward compatibility
+   * @deprecated UI now uses simple text rendering without custom styling
+   */
+  private getTypeStyles(type: string): {
+    backgroundColor: string;
+    borderColor: string;
+  } {
+    const styleMap: Record<
+      string,
+      { backgroundColor: string; borderColor: string }
+    > = {
+      service: { backgroundColor: '#e0f2fe', borderColor: '#0369a1' },
+      database: { backgroundColor: '#fef3c7', borderColor: '#d97706' },
+      cache: { backgroundColor: '#fce7f3', borderColor: '#be185d' },
+      queue: { backgroundColor: '#ede9fe', borderColor: '#7c3aed' },
+      gateway: { backgroundColor: '#dbeafe', borderColor: '#1e40af' },
+      frontend: { backgroundColor: '#fef3e2', borderColor: '#ea580c' },
+      backend: { backgroundColor: '#dcfce7', borderColor: '#16a34a' },
+      server: { backgroundColor: '#fee2e2', borderColor: '#dc2626' },
+    };
+
+    return (
+      styleMap[type] || { backgroundColor: '#f3f4f6', borderColor: '#333333' }
+    );
+  }
+
+  /**
+   * Generate complete uidata with all required and recommended fields
+   * Always uses type="text" to match working examples
+   */
+  private generateUIData(item: LayoutItem, index: number): UIData {
+    return {
+      x: item.x,
+      y: item.y,
+      type: 'text', // Always use 'text' type for proper UI rendering
+      color: '#000000',
+      width: item.width,
+      height: item.height,
+      zIndex: index + 1, // Increment zIndex for each item
+      content: item.name,
+      backgroundColor: '#f3f4f6',
+      borderColor: '#333333',
+      borderThickness: 1,
+      borderStyle: 'solid',
+      fontSize: 14,
+      fontStyle: 'normal',
+    };
+  }
+
+  /**
+   * Generate temporary ID for items
+   */
+  private generateTempId(name: string, index: number): string {
+    const sanitizedName = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+    const timestamp = Date.now().toString().slice(-6);
+    return `temp-${sanitizedName}-${index}-${timestamp}`;
+  }
+
+  /**
+   * Generate connection points (alternating pattern for better visual layout)
+   */
+  private getConnectionPoint(index: number, direction: 'from' | 'to'): string {
+    const points = ['right', 'left', 'bottom', 'top'];
+    if (direction === 'from') {
+      return points[index % 2 === 0 ? 0 : 2]; // right or bottom
+    }
+    return points[index % 2 === 0 ? 1 : 3]; // left or top
+  }
+
+  /**
+   * Generate uidata for connections with styling
+   */
+  private generateConnectionUIData(label: string): Record<string, unknown> {
+    // Determine connection style based on label
+    const labelLower = label.toLowerCase();
+    let borderColor = '#00897B';
+    let borderStyle: 'solid' | 'dashed' | 'dotted' = 'solid';
+
+    if (
+      labelLower.includes('async') ||
+      labelLower.includes('event') ||
+      labelLower.includes('queue') ||
+      labelLower.includes('message')
+    ) {
+      borderColor = '#7c3aed';
+      borderStyle = 'dashed';
+    } else if (
+      labelLower.includes('metric') ||
+      labelLower.includes('telemetry') ||
+      labelLower.includes('log')
+    ) {
+      borderColor = '#FF6F00';
+      borderStyle = 'dashed';
+    } else if (labelLower.includes('cache') || labelLower.includes('redis')) {
+      borderColor = '#be185d';
+    } else if (labelLower.includes('database') || labelLower.includes('sql')) {
+      borderColor = '#d97706';
+    }
+
+    return {
+      borderColor,
+      borderThickness: 2,
+      borderStyle,
+    };
+  }
+
+  /**
+   * Extract tags from items for context metadata
+   */
+  private extractTags(items: CreateDesignItem[]): string[] {
+    const tags = new Set<string>();
+    items.forEach((item) => {
+      tags.add(item.type);
+    });
+    return Array.from(tags);
   }
 
   /**
