@@ -3,12 +3,12 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { LlmModule } from './llm/llm.module';
 import { AgentModule } from './agent/agent.module';
-import { LoggerService } from './logs/logger.service';
+import { AuthModule } from './auth/auth.module';
+import { LoggerModule } from './logs/logger.module';
 
 @Module({
-  imports: [LlmModule, AgentModule],
+  imports: [LoggerModule, LlmModule, AgentModule, AuthModule],
   controllers: [AppController],
-  providers: [AppService, LoggerService],
-  exports: [LoggerService],
+  providers: [AppService],
 })
 export class AppModule {}

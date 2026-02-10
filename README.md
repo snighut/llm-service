@@ -160,6 +160,34 @@ src/
 | `OLLAMA_HOST` | Ollama server URL | `http://ubuntu-server:11434` |
 | `OLLAMA_MODEL` | LLM model name | `mistral-nemo:latest` |
 | `QDRANT_URL` | Qdrant vector store URL | `http://localhost:6333` |
+| `SUPABASE_JWT_AUDIENCE` | Supabase JWT audience claim | `authenticated` |
+| `SUPABASE_JWT_ISSUER` | Supabase JWT issuer URL | `https://your-project.supabase.co/auth/v1` |
+
+## Authentication
+
+Protected endpoints require a valid Supabase JWT token in the `Authorization` header:
+
+```bash
+curl -X POST http://localhost:3001/agent/generate-design \
+  -H "Authorization: Bearer YOUR_SUPABASE_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Design a microservices platform"}'
+```
+
+### Protected Endpoints
+
+- `POST /agent/generate-design` - Generate system design (requires authentication)
+
+### Setting Up Supabase Authentication
+
+1. Get your Supabase project URL from your Supabase dashboard
+2. Set environment variables:
+   ```bash
+   SUPABASE_JWT_AUDIENCE=authenticated
+   SUPABASE_JWT_ISSUER=https://your-project-id.supabase.co/auth/v1
+   ```
+3. Obtain a JWT token from your Supabase authentication flow
+4. Include the token in the `Authorization: Bearer <token>` header
 
 ## Troubleshooting
 

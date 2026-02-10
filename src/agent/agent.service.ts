@@ -38,7 +38,25 @@ export class AgentService {
    */
   private initializeAgent() {
     try {
-      const tools = this.designToolsService.getAllTools();
+      // We'll create tools dynamically per request with user token
+      // Just initialize the prompt template here
+      this.logger.log('Agent initialization prepared successfully');
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to initialize agent: ${errorMessage}`);
+      this.initializationError =
+        error instanceof Error ? error : new Error(String(error));
+      // Don't throw - allow service to start but track the error
+    }
+  }
+
+  /**
+   * Create agent executor with user-specific token
+   */
+  private createAgentExecutor(accessToken: string): AgentExecutor {
+    try {
+      const tools = this.designToolsService.getAllTools(accessToken);
 
       // System prompt that guides the agent's behavior
       const prompt = ChatPromptTemplate.fromMessages([
@@ -132,44 +150,40 @@ REMEMBER: Your ONLY job is to call the tool and return the ID. The user will vie
       });
 
       // Create executor
-      this.agentExecutor = new AgentExecutor({
+      return new AgentExecutor({
         agent,
         tools,
         verbose: true, // Enable detailed logging
         maxIterations: 15, // Prevent infinite loops
         returnIntermediateSteps: true, // Return reasoning steps
       });
-
-      this.logger.log('Agent executor initialized successfully');
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to initialize agent: ${errorMessage}`);
-      this.initializationError =
-        error instanceof Error ? error : new Error(String(error));
-      // Don't throw - allow service to start but track the error
+      this.logger.error(`Failed to create agent executor: ${errorMessage}`);
+      throw error;
     }
   }
 
   /**
    * Generate a system design based on natural language query
    */
-  async generateDesign(dto: GenerateDesignDto): Promise<DesignResultDto> {
+  async generateDesign(
+    dto: GenerateDesignDto,
+    accessToken?: string,
+  ): Promise<DesignResultDto> {
     const startTime = Date.now();
     this.logger.log(`Generating design for query: ${dto.query}`);
 
-    // Check if agent is initialized
-    if (!this.agentExecutor) {
-      const errorMsg = this.initializationError
-        ? `Agent not initialized: ${this.initializationError.message}`
-        : 'Agent executor is not initialized';
-      this.logger.error(errorMsg);
-      throw new Error(errorMsg);
+    if (!accessToken) {
+      throw new Error('Access token is required for design generation');
     }
 
     try {
+      // Create agent executor with user's token
+      const agentExecutor = this.createAgentExecutor(accessToken);
       // Execute agent with the query
-      const result = await this.agentExecutor.invoke({
+      const result = await agentExecutor.invoke({
         input: dto.query,
         chat_history: [], // Could be extended for conversation history
       });

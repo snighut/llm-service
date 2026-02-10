@@ -97,19 +97,17 @@ interface UIData {
 export class DesignToolsService {
   private readonly logger = new Logger(DesignToolsService.name);
   private readonly designServiceUrl: string;
-  private readonly authToken: string;
 
   constructor(private readonly httpService: HttpService) {
     this.designServiceUrl =
       process.env.DESIGN_SERVICE_URL || 'http://localhost:3001';
-    this.authToken = process.env.DESIGN_SERVICE_TOKEN || 'cant find it';
     this.logger.log(`Design service URL: ${this.designServiceUrl}`);
   }
 
   /**
    * Tool 1: Search for existing designs in the database
    */
-  getSearchExistingDesignsTool(): DynamicStructuredTool {
+  getSearchExistingDesignsTool(authToken: string): DynamicStructuredTool {
     return new DynamicStructuredTool({
       name: 'search_existing_designs',
       description:
@@ -129,7 +127,7 @@ export class DesignToolsService {
           const response = await firstValueFrom(
             this.httpService.get(`${this.designServiceUrl}/api/v1/designs`, {
               headers: {
-                Authorization: this.authToken,
+                Authorization: `Bearer ${authToken}`,
               },
             }),
           );
@@ -185,7 +183,7 @@ export class DesignToolsService {
   /**
    * Tool 2: Get a complete design by ID (including items and connections)
    */
-  getDesignByIdTool(): DynamicStructuredTool {
+  getDesignByIdTool(authToken: string): DynamicStructuredTool {
     return new DynamicStructuredTool({
       name: 'get_design_by_id',
       description:
@@ -202,7 +200,7 @@ export class DesignToolsService {
               `${this.designServiceUrl}/api/v1/designs/${designId}`,
               {
                 headers: {
-                  Authorization: this.authToken,
+                  Authorization: `Bearer ${authToken}`,
                 },
               },
             ),
@@ -267,7 +265,7 @@ export class DesignToolsService {
   /**
    * Tool 3: Create a new system design with items and connections
    */
-  getCreateSystemDesignTool(): DynamicStructuredTool {
+  getCreateSystemDesignTool(authToken: string): DynamicStructuredTool {
     return new DynamicStructuredTool({
       name: 'create_system_design',
       description:
@@ -396,7 +394,7 @@ export class DesignToolsService {
               payload,
               {
                 headers: {
-                  Authorization: this.authToken,
+                  Authorization: `Bearer ${authToken}`,
                 },
               },
             ),
@@ -614,11 +612,11 @@ export class DesignToolsService {
   /**
    * Get all tools as an array
    */
-  getAllTools(): DynamicStructuredTool[] {
+  getAllTools(authToken: string): DynamicStructuredTool[] {
     return [
-      this.getSearchExistingDesignsTool(),
-      this.getDesignByIdTool(),
-      this.getCreateSystemDesignTool(),
+      this.getSearchExistingDesignsTool(authToken),
+      this.getDesignByIdTool(authToken),
+      this.getCreateSystemDesignTool(authToken),
     ];
   }
 }

@@ -6,8 +6,18 @@ import {
   HttpStatus,
   HttpException,
   Logger,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import type { Request } from 'express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { AgentService } from './agent.service';
 import { GenerateDesignDto } from './dto/generate-design.dto';
 import { DesignResultDto, DesignErrorDto } from './dto/design-result.dto';
@@ -23,6 +33,8 @@ export class AgentController {
    * Generate a system design from natural language query
    */
   @Post('generate-design')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Generate system design from natural language',
     description:
@@ -40,12 +52,17 @@ export class AgentController {
     type: DesignErrorDto,
   })
   @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing authentication token',
+  })
+  @ApiResponse({
     status: 500,
     description: 'Internal server error',
     type: DesignErrorDto,
   })
   async generateDesign(
     @Body() dto: GenerateDesignDto,
+    @Req() request: Request,
   ): Promise<DesignResultDto> {
     try {
       this.logger.log(`Received design generation request: ${dto.query}`);
@@ -73,8 +90,14 @@ export class AgentController {
         );
       }
 
-      // Generate design using agent
-      const result = await this.agentService.generateDesign(dto);
+      // Extract authorization token from request
+      const authHeader = request.headers['authorization'] as string;
+      const accessToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : authHeader;
+
+      // Generate design using agent with user's token
+      const result = await this.agentService.generateDesign(dto, accessToken);
 
       this.logger.log(`Design generated successfully: ${result.designId}`);
       return result;

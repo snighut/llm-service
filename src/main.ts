@@ -1,29 +1,21 @@
-// Log process exit and beforeExit events for debugging
-process.on('exit', (code) => {
-  console.error(
-    'Process exit event with code:',
-    code,
-    new Error('Stack trace for exit'),
-  );
-});
-process.on('beforeExit', (code) => {
-  console.error(
-    'Process beforeExit event with code:',
-    code,
-    new Error('Stack trace for beforeExit'),
-  );
-});
 import 'dotenv/config';
+
+// Log process exit events for debugging
+process.on('exit', (code) => {
+  console.error('Process exit event with code:', code);
+});
 
 // Log unhandled promise rejections and uncaught exceptions
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
   process.exit(1);
 });
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception thrown:', err);
   process.exit(1);
 });
+
 import { NestFactory } from '@nestjs/core';
 import {
   INestApplication,
@@ -76,16 +68,21 @@ class AllExceptionsFilter implements ExceptionFilter {
 
 async function bootstrap() {
   // bootstrap start
+  console.log('Starting bootstrap...');
   let app: INestApplication;
   try {
+    console.log('Creating NestFactory...');
     app = await NestFactory.create(AppModule, {
-      logger: false,
+      logger: console,
     });
+    console.log('NestFactory created successfully');
     // bootstrap after NestFactory.create
   } catch (err) {
     console.error('Error during NestFactory.create:', err);
     throw err;
   }
+
+  console.log('Setting up logger...');
   app.useLogger(app.get(LoggerService));
   app.useGlobalFilters(new AllExceptionsFilter(app.get(LoggerService)));
 
