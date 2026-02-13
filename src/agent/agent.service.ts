@@ -107,7 +107,7 @@ The create_system_design tool expects this EXACT format:
   "items": [
     {{
       "name": string (REQUIRED - component name like "API Gateway"),
-      "type": enum (REQUIRED - one of: "service", "database", "queue", "cache", "gateway", "frontend", "backend", "other"),
+      "type": enum (REQUIRED - one of: "api-gateway", "microservice", "database", "cache", "message-queue", "load-balancer", "storage", "cdn", "lambda", "container", "kubernetes", "cloud", "server", "user", "mobile-app", "web-app", "firewall", "monitor", "text-box", "service", "gateway", "frontend", "backend", "queue", "other"),
       "x": number (optional - X coordinate, auto-generated if omitted),
       "y": number (optional - Y coordinate, auto-generated if omitted)
     }}
@@ -116,7 +116,8 @@ The create_system_design tool expects this EXACT format:
     {{
       "from": string (REQUIRED - source component NAME),
       "to": string (REQUIRED - target component NAME),
-      "label": string (optional - like "REST API", "SQL", "Message Queue")
+      "label": string (optional - like "REST API", "SQL", "Message Queue"),
+      "connectionType": string (optional - connection type: "restApi", "graphql", "grpc", "messageQueue", "eventBus", "databaseConnection", "cacheConnection", "dataFlow", "apiCall", etc.)
     }}
   ]
 }}
@@ -189,30 +190,79 @@ Complex Multi-Layer:
 - Queue(700,100)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-COMPONENT TYPE MAPPING
+COMPONENT TYPE MAPPING - Use Specific Visual Types for Better Diagrams
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Choose the correct type for each component:
-- "gateway" → API Gateway, Load Balancer, Reverse Proxy, Nginx, HAProxy
-- "service" → Microservice, Business Logic Service, Worker Service, Backend Service
-- "frontend" → Web App, Mobile App, SPA, UI Layer, React App
-- "backend" → API Server, Application Server, Backend
-- "database" → PostgreSQL, MySQL, MongoDB, SQL Database, NoSQL Database
-- "cache" → Redis, Memcached, Cache Layer, In-Memory Cache
-- "queue" → Kafka, RabbitMQ, SQS, Message Queue, Event Bus, Pub/Sub
-- "other" → Monitoring, Logging, CDN, Storage, anything else
+NEW VISUAL COMPONENT TYPES (Preferred - shown as beautiful icons):
+- "api-gateway" → API Gateway, Gateway Service (red gateway icon)
+- "microservice" → Microservices, Services (teal hexagon with gear)
+- "database" → PostgreSQL, MySQL, MongoDB, SQL/NoSQL DB (blue cylinder)
+- "cache" → Redis, Memcached, Cache Layer (yellow box with lightning)
+- "message-queue" → Kafka, RabbitMQ, SQS, Event Bus (green queue boxes)
+- "load-balancer" → Load Balancer, HAProxy, Nginx LB (purple distributor)
+- "storage" → Object Storage, S3, File Storage (pink cabinet)
+- "cdn" → CDN, CloudFront, Content Delivery (red globe)
+- "lambda" → Lambda, Serverless Functions, FaaS (orange lambda)
+- "container" → Docker Container, Container Instance (blue box)
+- "kubernetes" → Kubernetes, K8s Cluster (blue K8s wheel)
+- "cloud" → Cloud Provider, AWS, Azure, GCP (teal cloud)
+- "server" → Server, VM, Compute Instance (dark gray server)
+- "user" → User, Client, End User (gray person)
+- "mobile-app" → Mobile App, iOS, Android (teal phone)
+- "web-app" → Web App, Browser, Frontend (blue browser)
+- "firewall" → Firewall, Security Gateway (red shield)
+- "monitor" → Monitoring, Observability, Metrics (orange chart)
+- "text-box" → Generic/Custom Component, Unknown Type (gray document)
+
+IMPORTANT: Use "text-box" ONLY when:
+  • No specific type matches the component you're creating
+  • User needs a custom component not in the predefined list
+  • Representing a generic concept that doesn't fit other categories
+  • Put descriptive text in the "name" field (e.g., "Payment Processor", "Analytics Engine")
+
+LEGACY TYPES (Still supported but less visual):
+- "gateway" → Generic Gateway (use api-gateway or load-balancer instead)
+- "service" → Generic Service (use microservice instead)
+- "frontend" → Generic Frontend (use web-app or mobile-app instead)
+- "backend" → Generic Backend (use microservice instead)
+- "queue" → Generic Queue (use message-queue instead)
+- "other" → Anything else not covered above
+
+BEST PRACTICE: Always use specific new types (api-gateway, microservice, etc.) for professional diagrams!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CONNECTION LABELS
+CONNECTION LABELS & TYPES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Use meaningful labels that describe the connection:
-- Gateway → Service: "REST API", "gRPC", "HTTP", "WebSocket"
+Connection labels describe WHAT is being transferred:
+- API Gateway → Service: "REST API", "gRPC", "HTTP", "GraphQL"
 - Service → Database: "SQL Query", "NoSQL", "Read/Write", "CRUD"
 - Service → Cache: "Cache", "Get/Set", "Cache Lookup"
-- Service → Queue: "Publish", "Subscribe", "Message Queue", "Event Stream", "Async Job"
-- Service → Service: "REST API", "gRPC", "HTTP Call", "Event-driven", "Sync Call"
-- Build/Deploy: "Build", "Deploy", "Test", "Release", "CI/CD"
+- Service → Queue: "Publish", "Subscribe", "Message Queue", "Event Stream"
+- Service → Service: "REST API", "gRPC", "HTTP", "Async Event"
+- Pipeline: "Build", "Deploy", "Test", "Release"
+
+Connection types (optional connectionType field) define visual style:
+- "restApi" → RESTful API calls (solid blue line)
+- "graphql" → GraphQL queries (solid line)
+- "grpc" → gRPC communication (solid line)
+- "messageQueue" → Message queue pattern (dashed purple line)
+- "eventBus" → Event-driven (dashed purple line)
+- "databaseConnection" → Database access (orange line)
+- "cacheConnection" → Cache access (pink line)
+- "dataFlow" → Data flow (solid line with arrow)
+- "apiCall" → Generic API call (solid line)
+- "synchronousCall" → Sync request-response (solid line)
+- "asynchronousCall" → Async communication (dashed line)
+- "publishSubscribe" → Pub/sub pattern (dashed line)
+
+Combine both for best results:
+{{
+  "from": "Order Service",
+  "to": "Kafka Queue",
+  "label": "Publish Event",
+  "connectionType": "messageQueue"
+}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 COMPLETE EXAMPLES WITH POSITIONING

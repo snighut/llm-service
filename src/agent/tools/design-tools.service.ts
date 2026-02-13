@@ -53,6 +53,7 @@ interface CreateDesignConnection {
   from: string;
   to: string;
   label?: string;
+  connectionType?: string;
   context?: unknown;
 }
 
@@ -286,16 +287,37 @@ export class DesignToolsService {
                 ),
               type: z
                 .enum([
-                  'service',
+                  // New visual component types
+                  'api-gateway',
+                  'microservice',
                   'database',
-                  'queue',
                   'cache',
+                  'message-queue',
+                  'load-balancer',
+                  'storage',
+                  'cdn',
+                  'lambda',
+                  'container',
+                  'kubernetes',
+                  'cloud',
+                  'server',
+                  'user',
+                  'mobile-app',
+                  'web-app',
+                  'firewall',
+                  'monitor',
+                  'text-box',
+                  // Legacy types (still supported)
+                  'service',
                   'gateway',
                   'frontend',
                   'backend',
+                  'queue',
                   'other',
                 ])
-                .describe('Type of component'),
+                .describe(
+                  'Component type: Use specific visual types like api-gateway, microservice, database, cache, message-queue, etc. for professional diagrams. Use text-box ONLY as fallback when no specific type matches. Legacy types (service, gateway, frontend, backend, queue, other) still supported.',
+                ),
               x: z
                 .number()
                 .optional()
@@ -326,6 +348,12 @@ export class DesignToolsService {
                 .describe(
                   'Connection label (e.g., "REST API", "Message Queue", "gRPC")',
                 ),
+              connectionType: z
+                .string()
+                .optional()
+                .describe(
+                  'Connection type for visual styling: restApi, graphql, grpc, messageQueue, eventBus, databaseConnection, cacheConnection, dataFlow, apiCall, synchronousCall, asynchronousCall, publishSubscribe',
+                ),
               context: z
                 .any()
                 .optional()
@@ -349,12 +377,14 @@ export class DesignToolsService {
           // Transform connections to match design-service schema
           const formattedConnections = connectionsArray.map((conn, index) => ({
             name: String(conn.label || 'Connection'),
+            connectionType: conn.connectionType || undefined,
             from: { name: String(conn.from), type: 'DesignItem' },
             to: { name: String(conn.to), type: 'DesignItem' },
             fromPoint: this.getConnectionPoint(index, 'from'),
             toPoint: this.getConnectionPoint(index, 'to'),
             uidata: this.generateConnectionUIData(
               String(conn.label || 'Connection'),
+              conn.connectionType,
             ),
             context: conn.context,
           }));
@@ -489,49 +519,235 @@ export class DesignToolsService {
   }
 
   /**
-   * Get type-specific styling - No longer used, kept for backward compatibility
-   * @deprecated UI now uses simple text rendering without custom styling
+   * Get type-specific styling and map to visual component types
    */
   private getTypeStyles(type: string): {
+    type: string;
     backgroundColor: string;
     borderColor: string;
+    width: number;
+    height: number;
   } {
+    // Map all component types to their visual styles with dimensions
     const styleMap: Record<
       string,
-      { backgroundColor: string; borderColor: string }
+      {
+        type: string;
+        backgroundColor: string;
+        borderColor: string;
+        width: number;
+        height: number;
+      }
     > = {
-      service: { backgroundColor: '#e0f2fe', borderColor: '#0369a1' },
-      database: { backgroundColor: '#fef3c7', borderColor: '#d97706' },
-      cache: { backgroundColor: '#fce7f3', borderColor: '#be185d' },
-      queue: { backgroundColor: '#ede9fe', borderColor: '#7c3aed' },
-      gateway: { backgroundColor: '#dbeafe', borderColor: '#1e40af' },
-      frontend: { backgroundColor: '#fef3e2', borderColor: '#ea580c' },
-      backend: { backgroundColor: '#dcfce7', borderColor: '#16a34a' },
-      server: { backgroundColor: '#fee2e2', borderColor: '#dc2626' },
+      // New visual architectural component types with specific dimensions
+      'api-gateway': {
+        type: 'api-gateway',
+        backgroundColor: '#FF6B6B',
+        borderColor: '#FF6B6B',
+        width: 100,
+        height: 80,
+      },
+      microservice: {
+        type: 'microservice',
+        backgroundColor: '#4ECDC4',
+        borderColor: '#4ECDC4',
+        width: 90,
+        height: 90,
+      },
+      database: {
+        type: 'database',
+        backgroundColor: '#45B7D1',
+        borderColor: '#45B7D1',
+        width: 80,
+        height: 100,
+      },
+      cache: {
+        type: 'cache',
+        backgroundColor: '#FFC107',
+        borderColor: '#FFC107',
+        width: 90,
+        height: 70,
+      },
+      'message-queue': {
+        type: 'message-queue',
+        backgroundColor: '#96CEB4',
+        borderColor: '#96CEB4',
+        width: 100,
+        height: 70,
+      },
+      'load-balancer': {
+        type: 'load-balancer',
+        backgroundColor: '#9B59B6',
+        borderColor: '#9B59B6',
+        width: 100,
+        height: 80,
+      },
+      storage: {
+        type: 'storage',
+        backgroundColor: '#D4A5A5',
+        borderColor: '#D4A5A5',
+        width: 90,
+        height: 100,
+      },
+      cdn: {
+        type: 'cdn',
+        backgroundColor: '#FF6B6B',
+        borderColor: '#FF6B6B',
+        width: 90,
+        height: 90,
+      },
+      lambda: {
+        type: 'lambda',
+        backgroundColor: '#FF9500',
+        borderColor: '#FF9500',
+        width: 80,
+        height: 80,
+      },
+      container: {
+        type: 'container',
+        backgroundColor: '#0066CC',
+        borderColor: '#0066CC',
+        width: 85,
+        height: 85,
+      },
+      kubernetes: {
+        type: 'kubernetes',
+        backgroundColor: '#326CE5',
+        borderColor: '#326CE5',
+        width: 90,
+        height: 90,
+      },
+      cloud: {
+        type: 'cloud',
+        backgroundColor: '#4ECDC4',
+        borderColor: '#4ECDC4',
+        width: 110,
+        height: 70,
+      },
+      server: {
+        type: 'server',
+        backgroundColor: '#34495E',
+        borderColor: '#34495E',
+        width: 85,
+        height: 100,
+      },
+      user: {
+        type: 'user',
+        backgroundColor: '#95A5A6',
+        borderColor: '#95A5A6',
+        width: 70,
+        height: 80,
+      },
+      'mobile-app': {
+        type: 'mobile-app',
+        backgroundColor: '#1ABC9C',
+        borderColor: '#1ABC9C',
+        width: 60,
+        height: 100,
+      },
+      'web-app': {
+        type: 'web-app',
+        backgroundColor: '#3498DB',
+        borderColor: '#3498DB',
+        width: 100,
+        height: 80,
+      },
+      firewall: {
+        type: 'firewall',
+        backgroundColor: '#E74C3C',
+        borderColor: '#E74C3C',
+        width: 85,
+        height: 95,
+      },
+      monitor: {
+        type: 'monitor',
+        backgroundColor: '#F39C12',
+        borderColor: '#F39C12',
+        width: 95,
+        height: 80,
+      },
+      'text-box': {
+        type: 'text-box',
+        backgroundColor: '#7F8C8D',
+        borderColor: '#7F8C8D',
+        width: 100,
+        height: 80,
+      },
+      // Legacy types mapped to text boxes with colors
+      service: {
+        type: 'text',
+        backgroundColor: '#e0f2fe',
+        borderColor: '#0369a1',
+        width: 120,
+        height: 40,
+      },
+      gateway: {
+        type: 'text',
+        backgroundColor: '#dbeafe',
+        borderColor: '#1e40af',
+        width: 120,
+        height: 40,
+      },
+      frontend: {
+        type: 'text',
+        backgroundColor: '#fef3e2',
+        borderColor: '#ea580c',
+        width: 120,
+        height: 40,
+      },
+      backend: {
+        type: 'text',
+        backgroundColor: '#dcfce7',
+        borderColor: '#16a34a',
+        width: 120,
+        height: 40,
+      },
+      queue: {
+        type: 'text',
+        backgroundColor: '#ede9fe',
+        borderColor: '#7c3aed',
+        width: 120,
+        height: 40,
+      },
+      other: {
+        type: 'text',
+        backgroundColor: '#f3f4f6',
+        borderColor: '#6b7280',
+        width: 120,
+        height: 40,
+      },
     };
 
     return (
-      styleMap[type] || { backgroundColor: '#f3f4f6', borderColor: '#333333' }
+      styleMap[type] || {
+        type: 'text',
+        backgroundColor: '#f3f4f6',
+        borderColor: '#333333',
+        width: 120,
+        height: 40,
+      }
     );
   }
 
   /**
    * Generate complete uidata with all required and recommended fields
-   * Always uses type="text" to match working examples
+   * Uses specific component types for visual rendering with type-specific dimensions
    */
   private generateUIData(item: LayoutItem, index: number): UIData {
+    const style = this.getTypeStyles(item.type);
+
     return {
       x: item.x,
       y: item.y,
-      type: 'text', // Always use 'text' type for proper UI rendering
-      color: '#000000',
-      width: item.width,
-      height: item.height,
+      type: style.type, // Use specific type for visual components
+      color: style.borderColor, // Use borderColor for text to match icon color and contrast
+      width: style.width, // Use type-specific width
+      height: style.height, // Use type-specific height
       zIndex: index + 1, // Increment zIndex for each item
       content: item.name,
-      backgroundColor: '#f3f4f6',
-      borderColor: '#333333',
-      borderThickness: 1,
+      backgroundColor: 'transparent',
+      borderColor: style.borderColor,
+      borderThickness: 2,
       borderStyle: 'solid',
       fontSize: 14,
       fontStyle: 'normal',
@@ -562,39 +778,83 @@ export class DesignToolsService {
   }
 
   /**
-   * Generate uidata for connections with styling
+   * Generate uidata for connections with styling based on label and type
    */
-  private generateConnectionUIData(label: string): Record<string, unknown> {
-    // Determine connection style based on label
+  private generateConnectionUIData(
+    label: string,
+    connectionType?: string,
+  ): Record<string, unknown> {
+    // Determine connection style based on connectionType or label
     const labelLower = label.toLowerCase();
     let borderColor = '#00897B';
     let borderStyle: 'solid' | 'dashed' | 'dotted' = 'solid';
+    const linePattern: 'curved' | 'straight' | 'stepped' = 'curved';
 
-    if (
-      labelLower.includes('async') ||
-      labelLower.includes('event') ||
-      labelLower.includes('queue') ||
-      labelLower.includes('message')
-    ) {
-      borderColor = '#7c3aed';
-      borderStyle = 'dashed';
-    } else if (
-      labelLower.includes('metric') ||
-      labelLower.includes('telemetry') ||
-      labelLower.includes('log')
-    ) {
-      borderColor = '#FF6F00';
-      borderStyle = 'dashed';
-    } else if (labelLower.includes('cache') || labelLower.includes('redis')) {
-      borderColor = '#be185d';
-    } else if (labelLower.includes('database') || labelLower.includes('sql')) {
-      borderColor = '#d97706';
+    // Map connectionType to visual styles
+    if (connectionType) {
+      if (
+        connectionType.includes('message') ||
+        connectionType.includes('event') ||
+        connectionType.includes('async') ||
+        connectionType.includes('publish')
+      ) {
+        borderColor = '#7c3aed';
+        borderStyle = 'dashed';
+      } else if (
+        connectionType.includes('database') ||
+        connectionType.includes('sql')
+      ) {
+        borderColor = '#d97706';
+      } else if (connectionType.includes('cache')) {
+        borderColor = '#be185d';
+      } else if (
+        connectionType.includes('api') ||
+        connectionType.includes('rest') ||
+        connectionType.includes('grpc') ||
+        connectionType.includes('graphql')
+      ) {
+        borderColor = '#0369a1';
+      }
+    } else {
+      // Fallback to label-based detection
+      if (
+        labelLower.includes('async') ||
+        labelLower.includes('event') ||
+        labelLower.includes('queue') ||
+        labelLower.includes('message') ||
+        labelLower.includes('publish') ||
+        labelLower.includes('subscribe')
+      ) {
+        borderColor = '#7c3aed';
+        borderStyle = 'dashed';
+      } else if (
+        labelLower.includes('metric') ||
+        labelLower.includes('telemetry') ||
+        labelLower.includes('log')
+      ) {
+        borderColor = '#FF6F00';
+        borderStyle = 'dashed';
+      } else if (labelLower.includes('cache') || labelLower.includes('redis')) {
+        borderColor = '#be185d';
+      } else if (
+        labelLower.includes('database') ||
+        labelLower.includes('sql')
+      ) {
+        borderColor = '#d97706';
+      } else if (
+        labelLower.includes('http') ||
+        labelLower.includes('rest') ||
+        labelLower.includes('api')
+      ) {
+        borderColor = '#0369a1';
+      }
     }
 
     return {
       borderColor,
       borderThickness: 2,
       borderStyle,
+      linePattern, // All connections use smooth curves by default
     };
   }
 
