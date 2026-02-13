@@ -15,6 +15,7 @@ interface HttpError {
 interface DesignItem {
   id?: string;
   name: string;
+  displayName?: string;
   type: string;
   description?: string;
   items?: unknown[];
@@ -43,6 +44,7 @@ interface Design {
 
 interface CreateDesignItem {
   name: string;
+  displayName?: string;
   type: string;
   x?: number;
   y?: number;
@@ -59,6 +61,7 @@ interface CreateDesignConnection {
 
 interface CreateDesignGroup {
   name: string;
+  displayName?: string;
   description?: string;
   x?: number;
   y?: number;
@@ -75,6 +78,7 @@ interface CreateDesignInput {
 
 interface LayoutItem {
   name: string;
+  displayName?: string;
   type: string;
   x: number;
   y: number;
@@ -440,6 +444,7 @@ export class DesignToolsService {
           const formattedItems = itemsWithLayout.map((item, index) => ({
             id: this.generateTempId(item.name, index),
             name: String(item.name),
+            displayName: String(item.displayName || item.name),
             uidata: this.generateUIData(item, index),
             context: item.context,
           }));
@@ -449,6 +454,7 @@ export class DesignToolsService {
             (group, index) => ({
               id: this.generateGroupId(group.name, index),
               name: String(group.name),
+              displayName: String(group.displayName || group.name),
               description: String(group.description || ''),
               uidata: {
                 x: group.x ?? 100 + index * 200,
@@ -557,6 +563,7 @@ export class DesignToolsService {
 
       return {
         name: item.name,
+        displayName: item.displayName,
         type: item.type,
         x:
           item.x !== undefined
