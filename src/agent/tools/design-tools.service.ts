@@ -57,11 +57,20 @@ interface CreateDesignConnection {
   context?: unknown;
 }
 
+interface CreateDesignGroup {
+  name: string;
+  description?: string;
+  x?: number;
+  y?: number;
+  borderColor?: string;
+}
+
 interface CreateDesignInput {
   name: string;
   description?: string;
   items: CreateDesignItem[];
   connections?: CreateDesignConnection[];
+  designGroups?: CreateDesignGroup[];
 }
 
 interface LayoutItem {
@@ -362,9 +371,47 @@ export class DesignToolsService {
           )
           .optional()
           .describe('Array of connections between items'),
+        designGroups: z
+          .array(
+            z.object({
+              name: z
+                .string()
+                .describe(
+                  'Name of the design group (e.g., "Gateway Layer", "Service Layer", "Data Layer")',
+                ),
+              description: z
+                .string()
+                .optional()
+                .describe(
+                  'Description of the group purpose (e.g., "API entry point", "Business logic services")',
+                ),
+              x: z
+                .number()
+                .optional()
+                .describe(
+                  'X coordinate for the group box (will auto-generate if not provided)',
+                ),
+              y: z
+                .number()
+                .optional()
+                .describe(
+                  'Y coordinate for the group box (will auto-generate if not provided)',
+                ),
+              borderColor: z
+                .string()
+                .optional()
+                .describe(
+                  'Border color for the group box (e.g., "#607D8B", "#FF9800")',
+                ),
+            }),
+          )
+          .optional()
+          .describe(
+            'Array of design groups to visually organize related components with dashed borders',
+          ),
       }),
       func: async (input: CreateDesignInput) => {
-        const { name, description, items, connections } = input;
+        const { name, description, items, connections, designGroups } = input;
         try {
           const connectionsArray = connections || [];
           this.logger.log(
@@ -397,6 +444,23 @@ export class DesignToolsService {
             context: item.context,
           }));
 
+          // Format design groups if provided
+          const formattedDesignGroups = (designGroups || []).map(
+            (group, index) => ({
+              id: this.generateGroupId(group.name, index),
+              name: String(group.name),
+              description: String(group.description || ''),
+              uidata: {
+                x: group.x ?? 100 + index * 200,
+                y: group.y ?? 50,
+                borderColor: group.borderColor || this.getGroupColor(index),
+                borderStyle: 'dashed',
+                borderThickness: 2,
+              },
+              designs: [],
+            }),
+          );
+
           // Create design using design-service API
           const payload = {
             name: String(name),
@@ -411,7 +475,7 @@ export class DesignToolsService {
             },
             items: formattedItems,
             connections: formattedConnections,
-            designGroups: [],
+            designGroups: formattedDesignGroups,
           };
 
           this.logger.log(
@@ -752,6 +816,36 @@ export class DesignToolsService {
       fontSize: 14,
       fontStyle: 'normal',
     };
+  }
+
+  /**
+   * Generate ID for design groups
+   */
+  private generateGroupId(name: string, index: number): string {
+    return (
+      name
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .substring(0, 30) + (index > 0 ? `-${index}` : '')
+    );
+  }
+
+  /**
+   * Get color for design group based on index
+   */
+  private getGroupColor(index: number): string {
+    const colors = [
+      '#607D8B', // Blue Grey
+      '#FF9800', // Orange
+      '#2196F3', // Blue
+      '#4CAF50', // Green
+      '#9C27B0', // Purple
+      '#F44336', // Red
+      '#00BCD4', // Cyan
+      '#795548', // Brown
+    ];
+    return colors[index % colors.length];
   }
 
   /**
