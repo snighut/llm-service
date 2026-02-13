@@ -303,7 +303,7 @@ EXAMPLE WITH DESIGN GROUPS:
     {{"name": "API Gateway", "type": "api-gateway", "x": 200, "y": 100}},
     {{"name": "User Service", "type": "microservice", "x": 400, "y": 60}},
     {{"name": "Order Service", "type": "microservice", "x": 400, "y": 140}},
-    {{"name": "PostgreSQL", "type": "database", "x": 600, "y": 100}},
+    {{"name": "MySQL", "type": "database", "x": 600, "y": 100}},
     {{"name": "Redis", "type": "cache", "x": 600, "y": 200}}
   ],
   "designGroups": [
@@ -341,16 +341,79 @@ WHEN NOT TO USE DESIGN GROUPS:
 BEST PRACTICE: Always use specific new types (api-gateway, microservice, etc.) for professional diagrams!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CONNECTION LABELS & TYPES
+CONNECTION LABELS & TYPES - Be Descriptive About System Characteristics!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Connection labels describe WHAT is being transferred:
-- API Gateway → Service: "REST API", "gRPC", "HTTP", "GraphQL"
-- Service → Database: "SQL Query", "NoSQL", "Read/Write", "CRUD"
-- Service → Cache: "Cache", "Get/Set", "Cache Lookup"
-- Service → Queue: "Publish", "Subscribe", "Message Queue", "Event Stream"
-- Service → Service: "REST API", "gRPC", "HTTP", "Async Event"
-- Pipeline: "Build", "Deploy", "Test", "Release"
+⚠️ CRITICAL: Connection labels should describe WHAT is transferred AND key characteristics!
+
+ENHANCED CONNECTION LABELS (Include System Characteristics):
+
+BASIC LABELS (minimum):
+- API Gateway → Service: "REST API", "gRPC", "GraphQL"
+- Service → Database: "SQL Query", "NoSQL", "Read/Write"
+- Service → Cache: "Cache Lookup", "Get/Set"
+- Service → Queue: "Publish", "Subscribe", "Enqueue"
+
+DESCRIPTIVE LABELS (preferred - include performance/flow info):
+
+**With Throughput:**
+- "REST API (10K req/s)"
+- "Event Stream (50K msg/s)"
+- "Write (1M rows/day)"
+- "High-Throughput Ingest"
+
+**With Latency Requirements:**
+- "REST API (<50ms)"
+- "Cache Hit (<5ms)"
+- "Sync Call (<100ms)"
+- "Low-Latency Read"
+
+**With Rate Limiting:**
+- "Rate Limited (1K/min)"
+- "Throttled API (100/sec)"
+- "Quota: 10K/day"
+
+**With Flow Patterns:**
+- "Async Publish"
+- "Batched Write"
+- "Streaming Data"
+- "Fire-and-Forget"
+- "Request-Response"
+- "Fan-Out Events"
+
+**With Consistency/Reliability:**
+- "Sync Write (strong consistency)"
+- "Async Write (eventual)"
+- "Write-Through Cache"
+- "Cache-Aside Read"
+- "Retry on Failure"
+- "Circuit Breaker"
+
+**With Protocol Details:**
+- "REST/JSON"
+- "gRPC/Protobuf"
+- "WebSocket (bidirectional)"
+- "HTTP/2 Streaming"
+- "TCP Keep-Alive"
+
+EXAMPLES OF GOOD CONNECTION LABELS:
+
+Simple System:
+- "REST API" → Basic label
+- "SQL Query" → Basic label
+
+Medium Complexity:
+- "REST API (<100ms)" → With latency
+- "Cache-Aside Read" → With caching strategy
+- "Async Publish" → With flow pattern
+
+High-Scale System:
+- "REST API (10K/sec, <50ms)" → Throughput + latency
+- "Rate Limited (1K/min)" → With throttling
+- "Event Stream (50K msg/s)" → High throughput streaming
+- "Write-Through Cache" → Caching strategy
+- "Batched Insert (1M/day)" → Batched writes with volume
+- "gRPC (<10ms, circuit breaker)" → Protocol + latency + resilience
 
 Connection types (optional connectionType field) define visual style:
 - "restApi" → RESTful API calls (solid blue line)
@@ -366,12 +429,24 @@ Connection types (optional connectionType field) define visual style:
 - "asynchronousCall" → Async communication (dashed line)
 - "publishSubscribe" → Pub/sub pattern (dashed line)
 
-Combine both for best results:
+COMBINE LABEL + TYPE for best results:
+{{
+  "from": "API Gateway",
+  "to": "User Service",
+  "label": "REST API (<50ms, Rate Limited 1K/min)",
+  "connectionType": "restApi"
+}},
 {{
   "from": "Order Service",
-  "to": "Kafka Queue",
-  "label": "Publish Event",
+  "to": "Kafka",
+  "label": "Async Event Stream (50K msg/s)",
   "connectionType": "messageQueue"
+}},
+{{
+  "from": "Feed Service",
+  "to": "Redis",
+  "label": "Cache-Aside (<5ms)",
+  "connectionType": "cacheConnection"
 }}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -437,10 +512,10 @@ Example 2: Complex High-Scale System (12 components) - Multi-Layer with Design G
     {{"name": "Cart Service", "type": "microservice", "x": 380, "y": 200}},
     {{"name": "Payment Service", "type": "microservice", "x": 560, "y": 125}},
     {{"name": "Redis Cache", "type": "cache", "x": 560, "y": 50}},
-    {{"name": "PostgreSQL", "type": "database", "x": 740, "y": 100}},
+    {{"name": "MongoDB", "type": "database", "x": 740, "y": 100}},
     {{"name": "Kafka Queue", "type": "message-queue", "x": 740, "y": 180}},
     {{"name": "Batch Worker", "type": "microservice", "x": 900, "y": 180}},
-    {{"name": "Monitoring", "type": "monitor", "x": 900, "y": 100}}
+    {{"name": "Datadog", "type": "monitor", "x": 900, "y": 100}}
   ],
   "designGroups": [
     {{
@@ -473,20 +548,20 @@ Example 2: Complex High-Scale System (12 components) - Multi-Layer with Design G
     }}
   ],
   "connections": [
-    {{"from": "Load Balancer", "to": "API Gateway", "label": "HTTP", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "User Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Order Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Product Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Cart Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "User Service", "to": "Redis Cache", "label": "Cache", "connectionType": "cacheConnection"}},
-    {{"from": "Product Service", "to": "Redis Cache", "label": "Cache", "connectionType": "cacheConnection"}},
-    {{"from": "Order Service", "to": "PostgreSQL", "label": "SQL", "connectionType": "databaseConnection"}},
-    {{"from": "User Service", "to": "PostgreSQL", "label": "SQL", "connectionType": "databaseConnection"}},
-    {{"from": "Order Service", "to": "Payment Service", "label": "HTTP Call", "connectionType": "apiCall"}},
-    {{"from": "Order Service", "to": "Kafka Queue", "label": "Publish Event", "connectionType": "messageQueue"}},
-    {{"from": "Kafka Queue", "to": "Batch Worker", "label": "Subscribe", "connectionType": "messageQueue"}},
-    {{"from": "Batch Worker", "to": "PostgreSQL", "label": "SQL", "connectionType": "databaseConnection"}},
-    {{"from": "PostgreSQL", "to": "Monitoring", "label": "Metrics", "connectionType": "dataFlow"}}
+    {{"from": "Load Balancer", "to": "API Gateway", "label": "L7 LB (Round Robin, <10ms)", "connectionType": "restApi"}},
+    {{"from": "API Gateway", "to": "User Service", "label": "REST (Rate Limited 5K/min)", "connectionType": "restApi"}},
+    {{"from": "API Gateway", "to": "Order Service", "label": "REST (Rate Limited 2K/min)", "connectionType": "restApi"}},
+    {{"from": "API Gateway", "to": "Product Service", "label": "REST (<30ms, Cached)", "connectionType": "restApi"}},
+    {{"from": "API Gateway", "to": "Cart Service", "label": "REST (<50ms, Session)", "connectionType": "restApi"}},
+    {{"from": "User Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "cacheConnection"}},
+    {{"from": "Product Service", "to": "Redis Cache", "label": "Write-Through Cache", "connectionType": "cacheConnection"}},
+    {{"from": "Order Service", "to": "MongoDB", "label": "NoSQL Write (eventual)", "connectionType": "databaseConnection"}},
+    {{"from": "User Service", "to": "MongoDB", "label": "NoSQL Read (<20ms)", "connectionType": "databaseConnection"}},
+    {{"from": "Order Service", "to": "Payment Service", "label": "Sync HTTP (retry: 3x)", "connectionType": "apiCall"}},
+    {{"from": "Order Service", "to": "Kafka Queue", "label": "Async Event (50K msg/s)", "connectionType": "messageQueue"}},
+    {{"from": "Kafka Queue", "to": "Batch Worker", "label": "Consumer Group (at-least-once)", "connectionType": "messageQueue"}},
+    {{"from": "Batch Worker", "to": "MongoDB", "label": "Batch Upsert (1K/batch)", "connectionType": "databaseConnection"}},
+    {{"from": "MongoDB", "to": "Datadog", "label": "Metrics Push (1min interval)", "connectionType": "dataFlow"}}
   ]
 }}
 
@@ -499,7 +574,7 @@ Example 3: Twitter-Style Social Media (8 components) - MUST Use Design Groups
     {{"name": "User Service", "type": "microservice", "x": 300, "y": 60}},
     {{"name": "Tweet Service", "type": "microservice", "x": 300, "y": 140}},
     {{"name": "Feed Service", "type": "microservice", "x": 300, "y": 220}},
-    {{"name": "PostgreSQL", "type": "database", "x": 500, "y": 100}},
+    {{"name": "DynamoDB", "type": "database", "x": 500, "y": 100}},
     {{"name": "Redis Cache", "type": "cache", "x": 500, "y": 200}},
     {{"name": "Message Queue", "type": "message-queue", "x": 700, "y": 150}},
     {{"name": "Monitoring", "type": "monitor", "x": 900, "y": 100}}
@@ -535,15 +610,15 @@ Example 3: Twitter-Style Social Media (8 components) - MUST Use Design Groups
     }}
   ],
   "connections": [
-    {{"from": "API Gateway", "to": "User Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Tweet Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Feed Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "User Service", "to": "PostgreSQL", "label": "SQL Query", "connectionType": "databaseConnection"}},
-    {{"from": "Tweet Service", "to": "PostgreSQL", "label": "SQL Query", "connectionType": "databaseConnection"}},
-    {{"from": "Feed Service", "to": "Redis Cache", "label": "Cache", "connectionType": "cacheConnection"}},
-    {{"from": "Tweet Service", "to": "Message Queue", "label": "Publish Event", "connectionType": "messageQueue"}},
-    {{"from": "Message Queue", "to": "Feed Service", "label": "Subscribe", "connectionType": "messageQueue"}},
-    {{"from": "PostgreSQL", "to": "Monitoring", "label": "Metrics", "connectionType": "dataFlow"}}
+    {{"from": "API Gateway", "to": "User Service", "label": "REST (<100ms, Rate Limited 5K/min)", "connectionType": "restApi"}},
+    {{"from": "API Gateway", "to": "Tweet Service", "label": "REST (Rate Limited 1K/min)", "connectionType": "restApi"}},
+    {{"from": "API Gateway", "to": "Feed Service", "label": "REST (<50ms, High Read)", "connectionType": "restApi"}},
+    {{"from": "User Service", "to": "DynamoDB", "label": "NoSQL Read (<20ms)", "connectionType": "databaseConnection"}},
+    {{"from": "Tweet Service", "to": "DynamoDB", "label": "NoSQL Write (eventual)", "connectionType": "databaseConnection"}},
+    {{"from": "Feed Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "cacheConnection"}},
+    {{"from": "Tweet Service", "to": "Message Queue", "label": "Async Event (100K msg/s)", "connectionType": "messageQueue"}},
+    {{"from": "Message Queue", "to": "Feed Service", "label": "Fan-Out Subscribe", "connectionType": "messageQueue"}},
+    {{"from": "DynamoDB", "to": "Monitoring", "label": "Metrics Stream", "connectionType": "dataFlow"}}
   ]
 }}
 
@@ -577,8 +652,8 @@ Example 5: Event-Driven Architecture (8 components) - MUST Use Design Groups
     {{"name": "Event Bus", "type": "message-queue", "x": 460, "y": 100}},
     {{"name": "Notification Service", "type": "microservice", "x": 640, "y": 60}},
     {{"name": "Analytics Service", "type": "microservice", "x": 640, "y": 140}},
-    {{"name": "Database", "type": "database", "x": 820, "y": 80}},
-    {{"name": "Cache", "type": "cache", "x": 820, "y": 160}}
+    {{"name": "Cassandra", "type": "database", "x": 820, "y": 80}},
+    {{"name": "Redis Cache", "type": "cache", "x": 820, "y": 160}}
   ],
   "designGroups": [
     {{
@@ -624,41 +699,167 @@ Example 5: Event-Driven Architecture (8 components) - MUST Use Design Groups
     {{"from": "Inventory Service", "to": "Event Bus", "label": "Publish", "connectionType": "messageQueue"}},
     {{"from": "Event Bus", "to": "Notification Service", "label": "Subscribe", "connectionType": "messageQueue"}},
     {{"from": "Event Bus", "to": "Analytics Service", "label": "Subscribe", "connectionType": "messageQueue"}},
-    {{"from": "Notification Service", "to": "Database", "label": "SQL", "connectionType": "databaseConnection"}},
-    {{"from": "Analytics Service", "to": "Cache", "label": "Cache", "connectionType": "cacheConnection"}}
+    {{"from": "Notification Service", "to": "Cassandra", "label": "CQL", "connectionType": "databaseConnection"}},
+    {{"from": "Analytics Service", "to": "Redis Cache", "label": "Cache", "connectionType": "cacheConnection"}}
   ]
 }}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-COMPLEXITY GUIDELINES
+ADVANCED ARCHITECTURAL PATTERNS - Think Beyond CRUD Apps!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Simple (3-5 components): 
-- Linear flow with x coordinates: 100, 300, 500
-- Single row (y=100 for all)
-- Example: Client → API → Service → Database
+⚠️ CRITICAL: Don't default to basic API + Service + PostgreSQL patterns. Consider the ACTUAL use case!
 
-Medium (6-10 components):
-- Multiple columns with vertical spread
+DATABASE SELECTION BY TYPE (Choose the right database for the job!):
+
+SQL DATABASES (Relational):
+- "PostgreSQL" / "MySQL" → ACID transactions, complex joins, financial data, orders
+- Use when: Strong consistency, relationships, structured schemas
+
+NoSQL DATABASES (Choose by data model):
+- "MongoDB" / "DynamoDB" → Document stores for flexible schemas, user profiles, catalogs
+- "Cassandra" / "ScyllaDB" → Wide-column stores for time-series, IoT, high write throughput
+- "Redis" → In-memory database for real-time data, session stores, leaderboards, pub/sub
+- "Elasticsearch" → Full-text search, log aggregation, analytics queries
+
+SPECIALIZED DATABASES:
+- "Neo4j" → Graph database for social networks, recommendations, fraud detection
+- Name databases specifically (e.g., "Cassandra", "MongoDB", "Redis Cache", "Elasticsearch")
+
+CACHING STRATEGIES (Choose based on read/write patterns):
+- **Cache-Aside (Lazy Loading)**: App checks cache, loads from DB on miss (most common)
+  → Use for: Read-heavy workloads, unpredictable access patterns
+- **Write-Through**: Write to cache AND database simultaneously
+  → Use for: Read-heavy with occasional writes, strong consistency needed
+- **Write-Behind (Write-Back)**: Write to cache, async persist to DB
+  → Use for: High write throughput, can tolerate eventual consistency
+- **Write-Around**: Write directly to DB, bypass cache
+  → Use for: Write-heavy workloads, data read infrequently
+- Label cache connections: "Cache-Aside", "Write-Through Cache", etc.
+
+CDN & CONTENT DELIVERY (For static assets, media, global distribution):
+- "CloudFront CDN" / "Akamai CDN" / "Cloudflare CDN" → Global edge caching
+- Use for: Images, videos, static files, API responses
+- Consider: Multi-region deployments, edge computing, DDoS protection
+
+PERFORMANCE & RELIABILITY CONSIDERATIONS:
+
+**THROUGHPUT & LATENCY**:
+- High throughput needs → Add load balancers, horizontal scaling, message queues
+- Low latency needs → Add caching layers, CDN, in-memory databases (Redis)
+- Include performance targets in design
+
+**FAULT TOLERANCE & RELIABILITY**:
+- Multi-region deployments → Show multiple load balancers/servers
+- Database replication → Add "DB Replica" components
+- Circuit breakers → Service-to-service resilience
+- Health checks → Monitoring service tracking availability
+
+**RATE LIMITING & THROTTLING**:
+- Add "Rate Limiter" component for public APIs
+- Use API Gateway with rate limiting features
+- Prevent abuse, ensure fair usage, protect backend services
+
+**HASHING & DISTRIBUTION**:
+- Consistent hashing for cache partitioning
+- Sharding strategies for databases
+- Load balancing algorithms (round-robin, least connections)
+
+**SECURITY & NETWORKING**:
+- "VPN Gateway" → Secure connectivity between on-prem and cloud
+- "Firewall" → Network security, DDoS protection
+- "API Gateway" → Authentication, authorization, request validation
+
+COMMON ARCHITECTURAL PATTERNS:
+
+1. MEDIA STREAMING PLATFORM (Netflix/YouTube style):
+   → Use: CDN, Storage (S3), Web/Mobile Apps, API Gateway, Microservices, Cache, Database
+   → Include: Video transcoding service, thumbnail generation, recommendation engine
+   → Database: MongoDB for metadata, Cassandra for viewing history
+
+2. E-COMMERCE WITH IMAGE UPLOAD:
+   → Use: Storage (S3), CDN, Load Balancer, Microservices, Cache, Database, Message Queue
+   → Include: Image processing service, payment gateway, order service, inventory
+   → Database: PostgreSQL for orders/inventory, MongoDB for product catalog
+
+3. SAAS WITH OBSERVABILITY:
+   → Use: Monitor (Datadog/Grafana), API Gateway, Microservices, Database, Cache
+   → Include: Logging service, tracing service, metrics aggregation, alerting
+   → Database: Elasticsearch for logs, PostgreSQL for app data
+
+4. REAL-TIME ANALYTICS PIPELINE:
+   → Use: Message Queue (Kafka), Lambda, Storage, Database, Monitor
+   → Include: Stream processors, data transformers, aggregators, dashboards
+   → Database: Cassandra for time-series, Redis for real-time counters
+
+5. BATCH PROCESSING SYSTEM:
+   → Use: Message Queue, Lambda/Container, Storage, Database, Monitor
+   → Include: Job scheduler, worker pools, retry logic, dead letter queues
+   → Database: PostgreSQL for job metadata, S3 for data lakes
+
+6. MOBILE APP BACKEND:
+   → Use: Mobile App, API Gateway, CDN, Microservices, Cache, Database, Storage
+   → Include: Push notification service, image CDN, auth service, analytics
+   → Database: DynamoDB for user data, S3 for media storage
+
+7. SOCIAL MEDIA PLATFORM:
+   → Use: Load Balancer, API Gateway, Microservices, Cache, Database, Message Queue, CDN
+   → Include: Feed generation, content moderation, recommendation, search
+   → Database: Cassandra for posts/feeds, Redis for trending topics, Elasticsearch for search
+
+8. HIGH-THROUGHPUT SYSTEM WITH RATE LIMITING:
+   → Use: Load Balancer, Rate Limiter, API Gateway, Microservices, Cache, Database
+   → Include: Request throttling, circuit breakers, health monitoring
+   → Database: Cassandra for high writes, Redis for rate limit counters
+   → Caching: Write-through cache for critical data
+
+9. GLOBALLY DISTRIBUTED APP (Multi-Region):
+   → Use: CloudFront CDN, VPN Gateway, Load Balancers (per region), Microservices, DB Replicas
+   → Include: Geo-routing, database replication, failover mechanisms
+   → Database: DynamoDB with global tables, read replicas
+   → Focus: Low latency, fault tolerance, disaster recovery
+
+10. REAL-TIME GAMING/LEADERBOARD:
+    → Use: Load Balancer, API Gateway, Microservices, Redis (in-memory), Message Queue
+    → Include: WebSocket service, ranking service, real-time updates
+    → Database: Redis for leaderboards, Cassandra for match history
+    → Caching: Write-behind for high score updates
+
+11. IOT DATA INGESTION:
+    → Use: Message Queue (Kafka), Stream Processor, Storage, Database (wide-column), Monitor
+    → Include: Data validation, aggregation, alerting
+    → Database: Cassandra/ScyllaDB for time-series sensor data
+    → Focus: High write throughput, data retention policies
+
+12. RECOMMENDATION ENGINE:
+    → Use: API Gateway, Microservices, Graph Database, Cache, Message Queue, Storage
+    → Include: ML inference service, feature store, A/B testing
+    → Database: Neo4j for relationships, Redis for candidate cache
+    → Focus: Low latency recommendations, personalization
+
+COMPLEXITY GUIDELINES:
+
+Simple (3-5 components): Basic CRUD apps ONLY
+- Linear flow: Client → API → Service → Database
+- x spacing: 100, 300, 500
+
+Medium (6-10 components): Most real-world apps
+- Include caching, queuing, or specialized services  
+- Consider: Cache strategy, database type, monitoring
 - x spacing: 100, 280, 460, 640
 - y spread: 60, 100, 140, 180
-- Use fan-out or fan-in patterns
 
-Complex (10-15 components):
-- Full enterprise architecture with multiple layers
-- x spacing: 50, 200, 380, 560, 740, 900+
-- y spread across 200+ pixel range
-- Include load balancers, queues, caches, monitoring
+Complex (10-15+ components): Production-scale systems
+- Multiple data stores, observability, async processing, CDN, storage
+- MUST consider: Database type selection, caching strategy, fault tolerance
+- SHOULD include: Rate limiting, monitoring, CDN/VPN if applicable
+- x spacing: 50, 200, 380, 560, 740, 900, 1050+
+- y spread: 40-300 pixel range
 
-For high-scale/performance requirements, include:
-- Load Balancers (type: gateway) at x=50-100
-- API Gateway (type: gateway) at x=200-250
-- Service layer (type: service) at x=380-400, spread vertically
-- Cache layers (type: cache) at x=560, y offset from services
-- Database (type: database) at x=740, centered vertically
-- Message Queues (type: queue) for async processing
-- Monitoring/logging systems (type: other) at far right
-- Batch workers (type: service) after queues
+High-Performance (15+ components): Enterprise/Global scale
+- Multi-region, database replicas, advanced caching, comprehensive monitoring
+- Focus on: Throughput, latency, reliability, security
+- Include: Load balancers, rate limiters, circuit breakers, health checks
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CRITICAL RESPONSE RULES
