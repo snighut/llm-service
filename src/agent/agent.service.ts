@@ -514,8 +514,7 @@ Example 2: Complex High-Scale System (12 components) - Multi-Layer with Design G
     {{"name": "Redis Cache", "type": "cache", "x": 560, "y": 50}},
     {{"name": "MongoDB", "type": "database", "x": 740, "y": 100}},
     {{"name": "Kafka Queue", "type": "message-queue", "x": 740, "y": 180}},
-    {{"name": "Batch Worker", "type": "microservice", "x": 900, "y": 180}},
-    {{"name": "Datadog", "type": "monitor", "x": 900, "y": 100}}
+    {{"name": "Batch Worker", "type": "microservice", "x": 900, "y": 180}}
   ],
   "designGroups": [
     {{
@@ -576,8 +575,7 @@ Example 3: Twitter-Style Social Media (8 components) - MUST Use Design Groups
     {{"name": "Feed Service", "type": "microservice", "x": 300, "y": 220}},
     {{"name": "DynamoDB", "type": "database", "x": 500, "y": 100}},
     {{"name": "Redis Cache", "type": "cache", "x": 500, "y": 200}},
-    {{"name": "Message Queue", "type": "message-queue", "x": 700, "y": 150}},
-    {{"name": "Monitoring", "type": "monitor", "x": 900, "y": 100}}
+    {{"name": "Message Queue", "type": "message-queue", "x": 700, "y": 150}}
   ],
   "designGroups": [
     {{
@@ -603,7 +601,7 @@ Example 3: Twitter-Style Social Media (8 components) - MUST Use Design Groups
     }},
     {{
       "name": "Infrastructure",
-      "description": "Messaging and monitoring",
+      "description": "Messaging infrastructure",
       "x": 680,
       "y": 80,
       "borderColor": "#4CAF50"
@@ -617,8 +615,7 @@ Example 3: Twitter-Style Social Media (8 components) - MUST Use Design Groups
     {{"from": "Tweet Service", "to": "DynamoDB", "label": "NoSQL Write (eventual)", "connectionType": "databaseConnection"}},
     {{"from": "Feed Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "cacheConnection"}},
     {{"from": "Tweet Service", "to": "Message Queue", "label": "Async Event (100K msg/s)", "connectionType": "messageQueue"}},
-    {{"from": "Message Queue", "to": "Feed Service", "label": "Fan-Out Subscribe", "connectionType": "messageQueue"}},
-    {{"from": "DynamoDB", "to": "Monitoring", "label": "Metrics Stream", "connectionType": "dataFlow"}}
+    {{"from": "Message Queue", "to": "Feed Service", "label": "Fan-Out Subscribe", "connectionType": "messageQueue"}}
   ]
 }}
 
@@ -627,17 +624,15 @@ Example 4: CI/CD Pipeline (5 components) - Linear Flow (No Design Groups Needed)
   "name": "CI/CD Pipeline Flow",
   "description": "Continuous Integration and Deployment pipeline",
   "items": [
-    {{"name": "Source Code", "type": "other", "x": 100, "y": 100}},
-    {{"name": "CI Server", "type": "service", "x": 280, "y": 100}},
-    {{"name": "CD Server", "type": "service", "x": 460, "y": 100}},
-    {{"name": "Production", "type": "backend", "x": 640, "y": 100}},
-    {{"name": "Monitoring", "type": "other", "x": 820, "y": 100}}
+    {{"name": "Source Code", "type": "storage", "x": 100, "y": 100}},
+    {{"name": "CI Server", "type": "container", "x": 280, "y": 100}},
+    {{"name": "CD Server", "type": "container", "x": 460, "y": 100}},
+    {{"name": "Production", "type": "kubernetes", "x": 640, "y": 100}}
   ],
   "connections": [
-    {{"from": "Source Code", "to": "CI Server", "label": "Build"}},
-    {{"from": "CI Server", "to": "CD Server", "label": "Deploy"}},
-    {{"from": "CD Server", "to": "Production", "label": "Release"}},
-    {{"from": "Production", "to": "Monitoring", "label": "Monitor"}}
+    {{"from": "Source Code", "to": "CI Server", "label": "Git Push"}},
+    {{"from": "CI Server", "to": "CD Server", "label": "Artifact Deploy"}},
+    {{"from": "CD Server", "to": "Production", "label": "K8s Rollout"}}
   ]
 }}
 
@@ -845,21 +840,22 @@ Simple (3-5 components): Basic CRUD apps ONLY
 
 Medium (6-10 components): Most real-world apps
 - Include caching, queuing, or specialized services  
-- Consider: Cache strategy, database type, monitoring
+- Consider: Cache strategy, database type (based on use case)
 - x spacing: 100, 280, 460, 640
 - y spread: 60, 100, 140, 180
 
 Complex (10-15+ components): Production-scale systems
-- Multiple data stores, observability, async processing, CDN, storage
+- Multiple data stores, async processing, specialized services
 - MUST consider: Database type selection, caching strategy, fault tolerance
-- SHOULD include: Rate limiting, monitoring, CDN/VPN if applicable
+- OPTIONALLY include (only if contextually relevant): Monitoring, CDN, VPN, Rate limiting
 - x spacing: 50, 200, 380, 560, 740, 900, 1050+
 - y spread: 40-300 pixel range
 
 High-Performance (15+ components): Enterprise/Global scale
-- Multi-region, database replicas, advanced caching, comprehensive monitoring
+- Multi-region, database replicas, advanced caching
 - Focus on: Throughput, latency, reliability, security
 - Include: Load balancers, rate limiters, circuit breakers, health checks
+- Only add monitoring/observability if user explicitly requests it
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CRITICAL RESPONSE RULES
@@ -871,6 +867,13 @@ CRITICAL RESPONSE RULES
 4. DO NOT explain components, connections, or technical details
 5. DO NOT use markdown formatting
 6. ONLY return the design ID sentence
+7. DO NOT always include Monitoring/Datadog - only add when user explicitly requests observability, metrics, or monitoring
+
+AVOID ALWAYS INCLUDING:
+- Monitoring/Datadog (only if user asks for observability)
+- CDN (only if user mentions content delivery, static assets, or global distribution)
+- VPN (only if user mentions security, private networking)
+- Load Balancer (only for high-scale, traffic distribution scenarios)
 
 CORRECT: "Design created with ID: a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
 WRONG: Any explanation, list, description, or additional text
