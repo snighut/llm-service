@@ -118,7 +118,7 @@ The create_system_design tool expects this EXACT format:
       "from": string (REQUIRED - source component NAME),
       "to": string (REQUIRED - target component NAME),
       "label": string (optional - like "REST API", "SQL", "Message Queue"),
-      "connectionType": string (optional - connection type: "restApi", "graphql", "grpc", "messageQueue", "eventBus", "databaseConnection", "cacheConnection", "dataFlow", "apiCall", etc.)
+      "connectionType": string (optional - connection type: "synchronousCall", "asynchronousCall", "requestResponse", "publishSubscribe", "controlFlow", "messageFlow", "eventFlow", "dependency", "association", etc.)
     }}
   ],
   "designGroups": [
@@ -415,38 +415,38 @@ High-Scale System:
 - "Batched Insert (1M/day)" → Batched writes with volume
 - "gRPC (<10ms, circuit breaker)" → Protocol + latency + resilience
 
-Connection types (optional connectionType field) define visual style:
-- "restApi" → RESTful API calls (solid blue line)
-- "graphql" → GraphQL queries (solid line)
-- "grpc" → gRPC communication (solid line)
-- "messageQueue" → Message queue pattern (dashed purple line)
-- "eventBus" → Event-driven (dashed purple line)
-- "databaseConnection" → Database access (orange line)
-- "cacheConnection" → Cache access (pink line)
-- "dataFlow" → Data flow (solid line with arrow)
-- "apiCall" → Generic API call (solid line)
-- "synchronousCall" → Sync request-response (solid line)
-- "asynchronousCall" → Async communication (dashed line)
-- "publishSubscribe" → Pub/sub pattern (dashed line)
+Connection types (optional connectionType field) define visual style and semantic meaning:
+- "synchronousCall" → Sync request-response (solid line) - Use for HTTP APIs, REST, gRPC, GraphQL
+- "asynchronousCall" → Async communication (dashed line) - Use for message queues, Kafka, RabbitMQ
+- "requestResponse" → Request-response pattern (double arrows)
+- "publishSubscribe" → Pub/sub pattern (dashed line) - Use for event buses, SNS/SQS
+- "controlFlow" → Control/execution flow (bold arrow)
+- "messageFlow" → Message passing (dotted line)
+- "eventFlow" → Event-driven (dashed line with lightning)
+- "association" → Basic relationship
+- "dependency" → Weak relationship (dashed)
+- "looseCoupling" → Loosely coupled (light dashed)
+- "tightCoupling" → Tightly coupled (thick solid)
+- "default" → Default connection style
 
 COMBINE LABEL + TYPE for best results:
 {{
   "from": "API Gateway",
   "to": "User Service",
   "label": "REST API (<50ms, Rate Limited 1K/min)",
-  "connectionType": "restApi"
+  "connectionType": "synchronousCall"
 }},
 {{
   "from": "Order Service",
   "to": "Kafka",
   "label": "Async Event Stream (50K msg/s)",
-  "connectionType": "messageQueue"
+  "connectionType": "asynchronousCall"
 }},
 {{
   "from": "Feed Service",
   "to": "Redis",
   "label": "Cache-Aside (<5ms)",
-  "connectionType": "cacheConnection"
+  "connectionType": "synchronousCall"
 }}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -492,10 +492,10 @@ Example 1: Simple Microservices with Design Groups (4 components) - Fan-Out Patt
     }}
   ],
   "connections": [
-    {{"from": "API Gateway", "to": "Service 1", "label": "Route", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Service 2", "label": "Route", "connectionType": "restApi"}},
-    {{"from": "Service 1", "to": "Database", "label": "DB Access", "connectionType": "databaseConnection"}},
-    {{"from": "Service 2", "to": "Database", "label": "DB Access", "connectionType": "databaseConnection"}}
+    {{"from": "API Gateway", "to": "Service 1", "label": "Route", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Service 2", "label": "Route", "connectionType": "synchronousCall"}},
+    {{"from": "Service 1", "to": "Database", "label": "DB Access", "connectionType": "synchronousCall"}},
+    {{"from": "Service 2", "to": "Database", "label": "DB Access", "connectionType": "synchronousCall"}}
   ]
 }}
 
@@ -547,20 +547,20 @@ Example 2: Complex High-Scale System (12 components) - Multi-Layer with Design G
     }}
   ],
   "connections": [
-    {{"from": "Load Balancer", "to": "API Gateway", "label": "L7 LB (Round Robin, <10ms)", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "User Service", "label": "REST (Rate Limited 5K/min)", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Order Service", "label": "REST (Rate Limited 2K/min)", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Product Service", "label": "REST (<30ms, Cached)", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Cart Service", "label": "REST (<50ms, Session)", "connectionType": "restApi"}},
-    {{"from": "User Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "cacheConnection"}},
-    {{"from": "Product Service", "to": "Redis Cache", "label": "Write-Through Cache", "connectionType": "cacheConnection"}},
-    {{"from": "Order Service", "to": "MongoDB", "label": "NoSQL Write (eventual)", "connectionType": "databaseConnection"}},
-    {{"from": "User Service", "to": "MongoDB", "label": "NoSQL Read (<20ms)", "connectionType": "databaseConnection"}},
-    {{"from": "Order Service", "to": "Payment Service", "label": "Sync HTTP (retry: 3x)", "connectionType": "apiCall"}},
-    {{"from": "Order Service", "to": "Kafka Queue", "label": "Async Event (50K msg/s)", "connectionType": "messageQueue"}},
-    {{"from": "Kafka Queue", "to": "Batch Worker", "label": "Consumer Group (at-least-once)", "connectionType": "messageQueue"}},
-    {{"from": "Batch Worker", "to": "MongoDB", "label": "Batch Upsert (1K/batch)", "connectionType": "databaseConnection"}},
-    {{"from": "MongoDB", "to": "Datadog", "label": "Metrics Push (1min interval)", "connectionType": "dataFlow"}}
+    {{"from": "Load Balancer", "to": "API Gateway", "label": "L7 LB (Round Robin, <10ms)", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "User Service", "label": "REST (Rate Limited 5K/min)", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Order Service", "label": "REST (Rate Limited 2K/min)", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Product Service", "label": "REST (<30ms, Cached)", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Cart Service", "label": "REST (<50ms, Session)", "connectionType": "synchronousCall"}},
+    {{"from": "User Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "synchronousCall"}},
+    {{"from": "Product Service", "to": "Redis Cache", "label": "Write-Through Cache", "connectionType": "synchronousCall"}},
+    {{"from": "Order Service", "to": "MongoDB", "label": "NoSQL Write (eventual)", "connectionType": "asynchronousCall"}},
+    {{"from": "User Service", "to": "MongoDB", "label": "NoSQL Read (<20ms)", "connectionType": "synchronousCall"}},
+    {{"from": "Order Service", "to": "Payment Service", "label": "Sync HTTP (retry: 3x)", "connectionType": "synchronousCall"}},
+    {{"from": "Order Service", "to": "Kafka Queue", "label": "Async Event (50K msg/s)", "connectionType": "asynchronousCall"}},
+    {{"from": "Kafka Queue", "to": "Batch Worker", "label": "Consumer Group (at-least-once)", "connectionType": "asynchronousCall"}},
+    {{"from": "Batch Worker", "to": "MongoDB", "label": "Batch Upsert (1K/batch)", "connectionType": "synchronousCall"}},
+    {{"from": "MongoDB", "to": "Datadog", "label": "Metrics Push (1min interval)", "connectionType": "asynchronousCall"}}
   ]
 }}
 
@@ -608,14 +608,14 @@ Example 3: Twitter-Style Social Media (8 components) - MUST Use Design Groups
     }}
   ],
   "connections": [
-    {{"from": "API Gateway", "to": "User Service", "label": "REST (<100ms, Rate Limited 5K/min)", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Tweet Service", "label": "REST (Rate Limited 1K/min)", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Feed Service", "label": "REST (<50ms, High Read)", "connectionType": "restApi"}},
-    {{"from": "User Service", "to": "DynamoDB", "label": "NoSQL Read (<20ms)", "connectionType": "databaseConnection"}},
-    {{"from": "Tweet Service", "to": "DynamoDB", "label": "NoSQL Write (eventual)", "connectionType": "databaseConnection"}},
-    {{"from": "Feed Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "cacheConnection"}},
-    {{"from": "Tweet Service", "to": "Message Queue", "label": "Async Event (100K msg/s)", "connectionType": "messageQueue"}},
-    {{"from": "Message Queue", "to": "Feed Service", "label": "Fan-Out Subscribe", "connectionType": "messageQueue"}}
+    {{"from": "API Gateway", "to": "User Service", "label": "REST (<100ms, Rate Limited 5K/min)", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Tweet Service", "label": "REST (Rate Limited 1K/min)", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Feed Service", "label": "REST (<50ms, High Read)", "connectionType": "synchronousCall"}},
+    {{"from": "User Service", "to": "DynamoDB", "label": "NoSQL Read (<20ms)", "connectionType": "synchronousCall"}},
+    {{"from": "Tweet Service", "to": "DynamoDB", "label": "NoSQL Write (eventual)", "connectionType": "asynchronousCall"}},
+    {{"from": "Feed Service", "to": "Redis Cache", "label": "Cache-Aside (<5ms)", "connectionType": "synchronousCall"}},
+    {{"from": "Tweet Service", "to": "Message Queue", "label": "Async Event (100K msg/s)", "connectionType": "asynchronousCall"}},
+    {{"from": "Message Queue", "to": "Feed Service", "label": "Fan-Out Subscribe", "connectionType": "asynchronousCall"}}
   ]
 }}
 
@@ -688,14 +688,14 @@ Example 5: Event-Driven Architecture (8 components) - MUST Use Design Groups
     }}
   ],
   "connections": [
-    {{"from": "API Gateway", "to": "Order Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "API Gateway", "to": "Inventory Service", "label": "REST API", "connectionType": "restApi"}},
-    {{"from": "Order Service", "to": "Event Bus", "label": "Publish", "connectionType": "messageQueue"}},
-    {{"from": "Inventory Service", "to": "Event Bus", "label": "Publish", "connectionType": "messageQueue"}},
-    {{"from": "Event Bus", "to": "Notification Service", "label": "Subscribe", "connectionType": "messageQueue"}},
-    {{"from": "Event Bus", "to": "Analytics Service", "label": "Subscribe", "connectionType": "messageQueue"}},
-    {{"from": "Notification Service", "to": "Cassandra", "label": "CQL", "connectionType": "databaseConnection"}},
-    {{"from": "Analytics Service", "to": "Redis Cache", "label": "Cache", "connectionType": "cacheConnection"}}
+    {{"from": "API Gateway", "to": "Order Service", "label": "REST API", "connectionType": "synchronousCall"}},
+    {{"from": "API Gateway", "to": "Inventory Service", "label": "REST API", "connectionType": "synchronousCall"}},
+    {{"from": "Order Service", "to": "Event Bus", "label": "Publish", "connectionType": "publishSubscribe"}},
+    {{"from": "Inventory Service", "to": "Event Bus", "label": "Publish", "connectionType": "publishSubscribe"}},
+    {{"from": "Event Bus", "to": "Notification Service", "label": "Subscribe", "connectionType": "publishSubscribe"}},
+    {{"from": "Event Bus", "to": "Analytics Service", "label": "Subscribe", "connectionType": "publishSubscribe"}},
+    {{"from": "Notification Service", "to": "Cassandra", "label": "CQL", "connectionType": "synchronousCall"}},
+    {{"from": "Analytics Service", "to": "Redis Cache", "label": "Cache", "connectionType": "synchronousCall"}}
   ]
 }}
 
