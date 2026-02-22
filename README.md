@@ -34,6 +34,7 @@ curl -X POST http://localhost:3001/agent/generate-design \
 **Result**: Complete design with 8 services, 12 connections, ready to render on canvas!
 
 📚 **Agent Documentation**:
+
 - [AGENT_ARCHITECTURE.md](./AGENT_ARCHITECTURE.md) - Full architecture and design decisions
 - [AGENT_QUICKSTART.md](./AGENT_QUICKSTART.md) - Quick start guide and troubleshooting
 
@@ -86,6 +87,7 @@ $ bash setup-agent.sh
 # Or manually
 $ npm install langchain zod
 ```
+
 Testing
 
 ```bash
@@ -146,7 +148,7 @@ src/
 ## Key Dependencies
 
 - `@langchain/ollama` - Ollama LLM integration
-- `@langchain/core` - LangChain core functionality  
+- `@langchain/core` - LangChain core functionality
 - `langchain` - Agent framework and tools
 - `@nestjs/axios` - HTTP client for tool calling
 - `zod` - Schema validation for tools
@@ -154,14 +156,14 @@ src/
 
 ## Environment Variables Reference
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DESIGN_SERVICE_URL` | Design service API URL | `http://localhost:3000` |
-| `OLLAMA_HOST` | Ollama server URL | `http://ubuntu-server:11434` |
-| `OLLAMA_MODEL` | LLM model name | `mistral-nemo:latest` |
-| `QDRANT_URL` | Qdrant vector store URL | `http://localhost:6333` |
-| `SUPABASE_JWT_AUDIENCE` | Supabase JWT audience claim | `authenticated` |
-| `SUPABASE_JWT_ISSUER` | Supabase JWT issuer URL | `https://your-project.supabase.co/auth/v1` |
+| Variable                | Description                 | Example                                    |
+| ----------------------- | --------------------------- | ------------------------------------------ |
+| `DESIGN_SERVICE_URL`    | Design service API URL      | `http://localhost:3000`                    |
+| `OLLAMA_HOST`           | Ollama server URL           | `http://ubuntu-server:11434`               |
+| `OLLAMA_MODEL`          | LLM model name              | `mistral-nemo:latest`                      |
+| `QDRANT_URL`            | Qdrant vector store URL     | `http://localhost:6333`                    |
+| `SUPABASE_JWT_AUDIENCE` | Supabase JWT audience claim | `authenticated`                            |
+| `SUPABASE_JWT_ISSUER`   | Supabase JWT issuer URL     | `https://your-project.supabase.co/auth/v1` |
 
 ## Authentication
 
@@ -226,13 +228,17 @@ See [AGENT_QUICKSTART.md](./AGENT_QUICKSTART.md) for detailed troubleshooting.
 ## Integration with Other Services
 
 ### Design Service
+
 The agent calls design-service APIs to:
+
 - Search for existing design templates
 - Fetch complete design structures
 - Create new designs with components and connections
 
 ### Collaboration App
+
 The frontend can call the agent to:
+
 - Generate designs from user prompts
 - Display agent reasoning steps
 - Render generated designs on React Konva canvas
@@ -242,6 +248,7 @@ The frontend can call the agent to:
 ISC
 
 #### Generate System Design
+
 ```bash
 POST /agent/generate-design
 Content-Type: application/json
@@ -256,6 +263,7 @@ Content-Type: application/json
 ```
 
 #### Agent Health Check
+
 ```bash
 GET /agent/health
 ```
@@ -310,9 +318,8 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 
 ## Stay in touch
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+- Author - Swapnil Nighut
+- Website - [https://nighutlabs.dev/mydesigns](https://nighutlabs.dev/mydesigns)
 
 ## License
 
