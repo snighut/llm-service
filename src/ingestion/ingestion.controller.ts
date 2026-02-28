@@ -6,9 +6,12 @@ import {
   Param,
   NotFoundException,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { IngestionService } from './ingestion.service';
 import { StorageService } from '../storage/storage.service';
 import { GetUploadUrlDto, TriggerProcessingDto } from './dto';
@@ -31,6 +34,8 @@ export class IngestionController {
   ) {}
 
   @Post('upload-url')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
   async getUploadUrl(@Body() dto: GetUploadUrlDto) {
     const { fileName, fileHash } = dto;
 
@@ -78,6 +83,8 @@ export class IngestionController {
   }
 
   @Post('process')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
   async triggerProcessing(@Body() dto: TriggerProcessingDto) {
     const { objectKey, fileName, fileHash, userId } = dto;
 
@@ -155,6 +162,8 @@ export class IngestionController {
   }
 
   @Post('retry/:jobId')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
   async retryJob(@Param('jobId') jobId: string) {
     const job = await this.pdfQueue.getJob(jobId);
     if (!job) {
