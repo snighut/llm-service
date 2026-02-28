@@ -69,4 +69,30 @@ Question: {question}`;
 
     return chain.stream(query);
   }
+
+  async getCompletion(query: string): Promise<string> {
+    const documents = await this.getRelevantDocuments(query);
+    const serializedDocs = documents
+      .map((doc) => doc.payload.page_content)
+      .join('\n\n');
+
+    const template = `Answer the question based only on the following context:
+{context}
+
+Question: {question}`;
+
+    const prompt = PromptTemplate.fromTemplate(template);
+
+    const chain = RunnableSequence.from([
+      {
+        context: () => serializedDocs,
+        question: new RunnablePassthrough(),
+      },
+      prompt,
+      this.ollama,
+      new StringOutputParser(),
+    ]);
+
+    return chain.invoke(query);
+  }
 }
