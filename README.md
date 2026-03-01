@@ -324,3 +324,86 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+---
+
+## Recent Updates (PDF Ingestion + Embedding + RAG)
+
+The sections above remain unchanged from the previous README. The following is appended to document recent additions.
+
+### New Ingestion Endpoints
+
+All paths are now served under global prefix `api/v1`.
+
+- `POST /api/v1/ingestion/upload-url` _(JWT required)_
+  - Accepts `fileName`, `fileHash`
+  - Returns R2 pre-signed upload URL
+  - Handles dedup: returns `duplicate`/`processing` when file already exists
+- `POST /api/v1/ingestion/process` _(JWT required)_
+  - Enqueues PDF processing job in BullMQ queue `pdf-ingestion`
+- `GET /api/v1/ingestion/status/:jobId`
+  - Returns queue state/progress/result/failure reason
+- `GET /api/v1/ingestion/file/:hash`
+  - Returns metadata by content hash
+- `GET /api/v1/ingestion/files`
+  - Lists recent ingested files
+- `POST /api/v1/ingestion/retry/:jobId` _(JWT required)_
+  - Requeues completed/failed ingestion jobs
+
+### PDF Processing Pipeline
+
+1. Client uploads PDF to Cloudflare R2 using pre-signed URL
+2. Queue job is created via BullMQ (`pdf-ingestion`)
+3. Worker downloads file from R2
+4. PDF is parsed and split into chunks
+5. Chunks are embedded using Ollama embeddings model `mxbai-embed-large`
+6. Vectors are upserted into Qdrant collection `documents`
+7. Metadata status is updated in Postgres (`file_uploads`)
+8. Source object is removed from R2 after successful processing
+
+### Querying Embedded Documents (RAG)
+
+- `GET /api/v1/llm/v2/rag?prompt=...` _(SSE streaming with RAG context)_
+- `POST /api/v1/llm/v2/rag-completion` _(non-streaming, Postman-friendly)_
+
+Example:
+
+```bash
+curl -X POST http://localhost:3002/api/v1/llm/v2/rag-completion \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Summarize key points from uploaded PDF"}'
+```
+
+### Runtime Modes
+
+- API mode (default): `WORKER_ONLY=false` → serves HTTP endpoints
+- Worker mode: `WORKER_ONLY=true` → runs queue consumers only (no HTTP server)
+
+### Additional Environment Variables Used by New Flow
+
+```env
+# Queue
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# Storage (Cloudflare R2)
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_R2_ACCESS_KEY_ID=
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=
+CLOUDFLARE_R2_BUCKET_NAME=
+
+# Database for ingestion metadata
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+DATABASE_NAME=llm_service
+
+# Vector DB + Ollama
+QDRANT_URL=http://localhost:6333
+OLLAMA_HOST=http://localhost:11434
+
+# Enable worker-only process
+WORKER_ONLY=false
+```
