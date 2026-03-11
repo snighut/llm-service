@@ -346,6 +346,26 @@ curl -X POST http://localhost:3000/designs \
 
 ---
 
+## Ingestion Status Fields
+
+The ingestion APIs expose three status fields so clients can distinguish raw queue state from normalized user-facing state.
+
+Applies to:
+- `GET /api/v1/ingestion/status/:jobId`
+- `GET /api/v1/ingestion/files`
+
+Field meanings:
+- `status`: Effective/normalized status used by clients. This value can override queue state when metadata has terminal status (`failed`/`completed`) or when a queue job is detected as stale active.
+- `metadataStatus`: Raw status from `file_uploads.status` in Postgres.
+- `queueStatus`: Raw BullMQ state (`waiting`, `active`, `completed`, `failed`, etc).
+
+Related fields:
+- `progress`: Normalized progress used for display. Returns `0` for `failed` or `stale_active`, and `100` for `completed`.
+- `staleActive`: `true` when queue state is `active` but no valid lock exists for that job.
+- `lockTtlMs`: Lock TTL in milliseconds when applicable (active jobs); useful for debugging stale lock conditions.
+
+---
+
 ## Swagger Documentation
 
 Full API documentation available at:
@@ -372,4 +392,4 @@ http://localhost:3001/api-json
 ---
 
 **Version**: 1.0.0  
-**Last Updated**: February 2026
+**Last Updated**: March 2026

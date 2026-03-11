@@ -123,6 +123,18 @@ async function bootstrap() {
       .setDescription('API for Large Language Model service endpoints')
       .setVersion('1.0.0')
       .addTag('llm', 'LLM endpoints')
+      .addTag('llm-v2', 'LLM v2 endpoints')
+      .addTag('ingestion', 'PDF ingestion and job management endpoints')
+      .addTag('agent', 'AI agent design generation endpoints')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Supabase access token',
+        },
+        'JWT-auth',
+      )
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);

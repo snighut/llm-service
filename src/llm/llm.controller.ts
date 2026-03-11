@@ -9,9 +9,17 @@ import {
   Query,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import {
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { LlmService } from './llm.service';
 import { Logger } from '@nestjs/common';
 
+@ApiTags('llm')
 @Controller('llm')
 export class LlmController {
   private readonly logger = new Logger(LlmController.name);
@@ -19,11 +27,24 @@ export class LlmController {
   constructor(private readonly llmService: LlmService) {}
 
   @Get('health')
+  @ApiOperation({ summary: 'Health check endpoint' })
+  @ApiResponse({ status: 200, description: 'Service is healthy' })
   health(@Res() res: Response) {
     return res.status(HttpStatus.OK).json({ status: 'ok' });
   }
 
   @Post('validate')
+  @ApiOperation({ summary: 'Validate prompt before sending to LLM' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', example: 'Explain microservices' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Prompt is valid' })
+  @ApiResponse({ status: 400, description: 'Invalid or too long prompt' })
   validate(@Body('prompt') prompt: string, @Res() res: Response) {
     this.logger.log(`validate endpoint called with prompt: ${prompt}`);
     if (!prompt || typeof prompt !== 'string' || prompt.length > 2048) {
@@ -35,6 +56,18 @@ export class LlmController {
   }
 
   @Get('stream') // GET is more reliable for mobile carriers
+  @ApiOperation({
+    summary: 'Stream LLM response via SSE',
+    description: 'Returns text/event-stream output for the provided prompt.',
+  })
+  @ApiQuery({
+    name: 'prompt',
+    required: true,
+    type: String,
+    example: 'What is event-driven architecture?',
+  })
+  @ApiResponse({ status: 200, description: 'Streaming response' })
+  @ApiResponse({ status: 400, description: 'Prompt required' })
   @Header('Content-Type', 'text/event-stream')
   @Header('Cache-Control', 'no-cache, no-transform') // no-transform tells Cloudflare not to buffer
   @Header('Connection', 'keep-alive') // Explicitly for Safari
@@ -82,6 +115,18 @@ export class LlmController {
   }
 
   @Post('completion')
+  @ApiOperation({ summary: 'Get non-streaming LLM completion' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', example: 'What is artificial intelligence?' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'LLM completion response' })
+  @ApiResponse({ status: 400, description: 'Prompt required' })
+  @ApiResponse({ status: 500, description: 'LLM node error' })
   async completion(@Body('prompt') prompt: string, @Res() res: Response) {
     this.logger.log(`completion endpoint called with prompt: ${prompt}`);
     if (!prompt)
