@@ -90,8 +90,8 @@ export class IngestionProcessor extends WorkerHost {
 
       this.logger.log(`Chunking PDF: ${docs.length} pages`);
       const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 600,
-        chunkOverlap: 100,
+        chunkSize: 400,
+        chunkOverlap: 60,
       });
       const chunks: DocChunk[] = (await splitter.splitDocuments(
         docs,
