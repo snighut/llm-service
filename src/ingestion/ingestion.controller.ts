@@ -181,7 +181,10 @@ export class IngestionController {
       queueStatus: statusView.queueStatus,
       progress: statusView.progress,
       result: job.returnvalue as Record<string, unknown>,
-      failedReason: fileUpload?.error_message ?? job.failedReason,
+      failedReason:
+        statusView.effectiveStatus === 'failed'
+          ? (fileUpload?.error_message ?? job.failedReason)
+          : undefined,
       staleActive: statusView.staleActive,
       lockTtlMs: statusView.lockTtlMs,
       metadata: fileUpload,
