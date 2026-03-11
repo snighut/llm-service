@@ -39,7 +39,7 @@ export class FileUpload {
   chunk_count: number;
 
   @Column({ type: 'text', nullable: true })
-  error_message: string; // If failed
+  error_message: string | null; // If failed
 
   @CreateDateColumn()
   uploaded_at: Date;

@@ -47,12 +47,15 @@ export class IngestionService {
     chunkCount?: number,
     errorMessage?: string,
   ): Promise<void> {
+    const resolvedErrorMessage =
+      status === 'completed' ? null : (errorMessage ?? null);
+
     await this.fileUploadRepository.update(
       { content_hash: contentHash },
       {
         status,
         chunk_count: chunkCount,
-        error_message: errorMessage,
+        error_message: resolvedErrorMessage,
       },
     );
   }

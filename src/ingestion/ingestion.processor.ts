@@ -147,12 +147,9 @@ export class IngestionProcessor extends WorkerHost {
       try {
         // Try batch embedding first
         this.logger.log('Attempting batch embedding...');
-        embeddings = await this.withTimeout(
-          this.embeddings.embedDocuments(
-            validChunks.map((c: DocChunk) => c.pageContent),
-          ),
-          this.embeddingTimeoutMs,
-          `Batch embedding timed out after ${this.embeddingTimeoutMs}ms`,
+        embeddings = await this.runBatchEmbeddingWithProgress(
+          job,
+          validChunks.map((c: DocChunk) => c.pageContent),
         );
         this.logger.log('Batch embedding successful');
       } catch (batchError) {
@@ -319,6 +316,38 @@ export class IngestionProcessor extends WorkerHost {
         }, timeoutMs);
       }),
     ]);
+  }
+
+  private async runBatchEmbeddingWithProgress(
+    job: Job<PdfJobData>,
+    chunkContents: string[],
+  ): Promise<(number[] | null)[]> {
+    const startProgress = 50;
+    const maxProgress = 75;
+    const tickMs = 5000;
+
+    let lastProgress = startProgress;
+    await job.updateProgress(lastProgress);
+
+    const interval = setInterval(() => {
+      const nextProgress = Math.min(lastProgress + 1, maxProgress);
+      if (nextProgress > lastProgress) {
+        lastProgress = nextProgress;
+        void job.updateProgress(lastProgress).catch((error: unknown) => {
+          this.logger.warn('Failed to update batch embedding progress', error);
+        });
+      }
+    }, tickMs);
+
+    try {
+      return await this.withTimeout(
+        this.embeddings.embedDocuments(chunkContents),
+        this.embeddingTimeoutMs,
+        `Batch embedding timed out after ${this.embeddingTimeoutMs}ms`,
+      );
+    } finally {
+      clearInterval(interval);
+    }
   }
 
   @OnWorkerEvent('completed')
