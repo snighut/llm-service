@@ -32,6 +32,7 @@ export class IngestionProcessor extends WorkerHost {
   private readonly logger = new Logger(IngestionProcessor.name);
   private readonly qdrantClient: QdrantClient;
   private readonly embeddings: OllamaEmbeddings;
+  private readonly embeddingTimeoutMs: number;
 
   constructor(
     private readonly storageService: StorageService,
@@ -45,6 +46,9 @@ export class IngestionProcessor extends WorkerHost {
       model: 'mxbai-embed-large',
       baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434',
     });
+    this.embeddingTimeoutMs = Number(
+      process.env.INGESTION_EMBEDDING_TIMEOUT_MS || 120000,
+    );
 
     this.logger.log('Ingestion processor initialized');
   }
@@ -143,8 +147,12 @@ export class IngestionProcessor extends WorkerHost {
       try {
         // Try batch embedding first
         this.logger.log('Attempting batch embedding...');
-        embeddings = await this.embeddings.embedDocuments(
-          validChunks.map((c: DocChunk) => c.pageContent),
+        embeddings = await this.withTimeout(
+          this.embeddings.embedDocuments(
+            validChunks.map((c: DocChunk) => c.pageContent),
+          ),
+          this.embeddingTimeoutMs,
+          `Batch embedding timed out after ${this.embeddingTimeoutMs}ms`,
         );
         this.logger.log('Batch embedding successful');
       } catch (batchError) {
@@ -266,7 +274,11 @@ export class IngestionProcessor extends WorkerHost {
     const embeddings: (number[] | null)[] = [];
     for (let i = 0; i < chunks.length; i++) {
       try {
-        const emb = await this.embeddings.embedQuery(chunks[i].pageContent);
+        const emb = await this.withTimeout(
+          this.embeddings.embedQuery(chunks[i].pageContent),
+          this.embeddingTimeoutMs,
+          `Chunk ${i + 1} embedding timed out after ${this.embeddingTimeoutMs}ms`,
+        );
         embeddings.push(emb);
 
         // Update progress to prevent stalling (50% -> 80% range)
@@ -286,7 +298,27 @@ export class IngestionProcessor extends WorkerHost {
         embeddings.push(null);
       }
     }
+
+    if (embeddings.every((embedding) => embedding === null)) {
+      throw new Error('All chunk embeddings failed');
+    }
+
     return embeddings;
+  }
+
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string,
+  ): Promise<T> {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
+      }),
+    ]);
   }
 
   @OnWorkerEvent('completed')
