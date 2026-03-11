@@ -33,6 +33,7 @@ export class IngestionProcessor extends WorkerHost {
   private readonly qdrantClient: QdrantClient;
   private readonly embeddings: OllamaEmbeddings;
   private readonly embeddingTimeoutMs: number;
+  private readonly chunkEmbeddingTimeoutMs: number;
   private readonly maxConsecutiveEmbeddingFailures: number;
 
   constructor(
@@ -49,6 +50,9 @@ export class IngestionProcessor extends WorkerHost {
     });
     this.embeddingTimeoutMs = Number(
       process.env.INGESTION_EMBEDDING_TIMEOUT_MS || 120000,
+    );
+    this.chunkEmbeddingTimeoutMs = Number(
+      process.env.INGESTION_CHUNK_EMBEDDING_TIMEOUT_MS || 45000,
     );
     this.maxConsecutiveEmbeddingFailures = Number(
       process.env.INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES || 5,
@@ -279,8 +283,8 @@ export class IngestionProcessor extends WorkerHost {
       try {
         const emb = await this.withTimeout(
           this.embeddings.embedQuery(chunks[i].pageContent),
-          this.embeddingTimeoutMs,
-          `Chunk ${i + 1} embedding timed out after ${this.embeddingTimeoutMs}ms`,
+          this.chunkEmbeddingTimeoutMs,
+          `Chunk ${i + 1} embedding timed out after ${this.chunkEmbeddingTimeoutMs}ms`,
         );
         embeddings.push(emb);
         consecutiveFailures = 0;
