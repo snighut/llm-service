@@ -39,6 +39,50 @@ export class IngestionService {
   }
 
   /**
+   * Upsert processing metadata by content hash (idempotent)
+   */
+  async upsertProcessingRecord(data: {
+    contentHash: string;
+    originalFilename: string;
+    uploadedBy: string;
+    jobId: string;
+    r2ObjectKey: string;
+  }): Promise<FileUpload> {
+    const existing = await this.findByHash(data.contentHash);
+
+    if (existing) {
+      await this.fileUploadRepository.update(
+        { content_hash: data.contentHash },
+        {
+          original_filename: data.originalFilename,
+          uploaded_by: data.uploadedBy,
+          job_id: data.jobId,
+          r2_object_key: data.r2ObjectKey,
+          status: 'processing',
+          chunk_count: null,
+          error_message: null,
+        },
+      );
+
+      const updated = await this.findByHash(data.contentHash);
+      if (updated) {
+        return updated;
+      }
+    }
+
+    return this.create({
+      content_hash: data.contentHash,
+      original_filename: data.originalFilename,
+      uploaded_by: data.uploadedBy,
+      job_id: data.jobId,
+      r2_object_key: data.r2ObjectKey,
+      status: 'processing',
+      chunk_count: null,
+      error_message: null,
+    });
+  }
+
+  /**
    * Update file upload status
    */
   async updateStatus(

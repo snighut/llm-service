@@ -36,7 +36,7 @@ export class FileUpload {
   status: 'processing' | 'completed' | 'failed';
 
   @Column({ type: 'integer', nullable: true })
-  chunk_count: number;
+  chunk_count: number | null;
 
   @Column({ type: 'text', nullable: true })
   error_message: string | null; // If failed

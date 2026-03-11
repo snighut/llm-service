@@ -26,6 +26,9 @@ interface PdfJobData {
 @Controller('ingestion')
 export class IngestionController {
   private readonly logger = new Logger(IngestionController.name);
+  private readonly staleActiveThresholdMs = Number(
+    process.env.INGESTION_STALE_ACTIVE_MS || 60000,
+  );
 
   constructor(
     private readonly storageService: StorageService,
@@ -171,16 +174,84 @@ export class IngestionController {
     }
 
     const state = await job.getState();
+
+    // Get original job data
+    const jobData = job.data as PdfJobData;
+    const { objectKey, fileName, fileHash, userId } = jobData;
+
+    if (state === 'active') {
+      const lockInfo = await this.getJobLockInfo(jobId);
+      const activeAgeMs = job.processedOn
+        ? Date.now() - job.processedOn
+        : undefined;
+
+      if (lockInfo.hasLock) {
+        return {
+          status: 'already_processing',
+          message: 'Job is actively being processed',
+          jobId,
+          lockTtlMs: lockInfo.lockTtlMs,
+          activeAgeMs,
+        };
+      }
+
+      if (
+        activeAgeMs !== undefined &&
+        activeAgeMs < this.staleActiveThresholdMs
+      ) {
+        return {
+          status: 'error',
+          message:
+            'Job appears active without lock but is below stale threshold. Retry shortly.',
+          jobId,
+          activeAgeMs,
+          staleThresholdMs: this.staleActiveThresholdMs,
+        };
+      }
+
+      await this.moveActiveJobToWaiting(jobId);
+      this.logger.warn(
+        `Recovered stale active job ${jobId} (activeAgeMs=${activeAgeMs ?? -1})`,
+      );
+
+      await this.ingestionService.upsertProcessingRecord({
+        contentHash: fileHash,
+        originalFilename: fileName,
+        uploadedBy: userId,
+        jobId,
+        r2ObjectKey: objectKey,
+      });
+
+      return {
+        status: 'requeued',
+        message: 'Stale active job recovered and moved to waiting',
+        jobId,
+        activeAgeMs,
+      };
+    }
+
+    if (state === 'waiting' || state === 'delayed') {
+      await this.ingestionService.upsertProcessingRecord({
+        contentHash: fileHash,
+        originalFilename: fileName,
+        uploadedBy: userId,
+        jobId,
+        r2ObjectKey: objectKey,
+      });
+
+      return {
+        status: 'already_queued',
+        message: `Job is already queued (${state})`,
+        jobId,
+      };
+    }
+
     if (state !== 'failed' && state !== 'completed') {
       return {
         status: 'error',
         message: `Cannot retry job in state: ${state}`,
       };
     }
-
-    // Get original job data
-    const jobData = job.data as PdfJobData;
-    const { objectKey, fileName, fileHash, userId } = jobData;
 
     // Create new job with same data
     const newJob = await this.pdfQueue.add('process-pdf', {
@@ -194,14 +265,13 @@ export class IngestionController {
       `Retry job created: ${newJob.id} for original job: ${jobId}`,
     );
 
-    // Update database with new job ID
-    await this.ingestionService.create({
-      content_hash: fileHash,
-      original_filename: fileName,
-      uploaded_by: userId,
-      job_id: newJob.id as string,
-      r2_object_key: objectKey,
-      status: 'processing',
+    // Idempotently update metadata with new job ID
+    await this.ingestionService.upsertProcessingRecord({
+      contentHash: fileHash,
+      originalFilename: fileName,
+      uploadedBy: userId,
+      jobId: newJob.id as string,
+      r2ObjectKey: objectKey,
     });
 
     return {
@@ -209,5 +279,27 @@ export class IngestionController {
       newJobId: newJob.id,
       originalJobId: jobId,
     };
+  }
+
+  private async getJobLockInfo(jobId: string): Promise<{
+    hasLock: boolean;
+    lockTtlMs: number;
+  }> {
+    const client = await this.pdfQueue.client;
+    const lockKey = this.pdfQueue.toKey(`${jobId}:lock`);
+    const lockTtlMs = await client.pttl(lockKey);
+
+    return {
+      hasLock: lockTtlMs > 0,
+      lockTtlMs,
+    };
+  }
+
+  private async moveActiveJobToWaiting(jobId: string): Promise<void> {
+    const client = await this.pdfQueue.client;
+    const activeKey = this.pdfQueue.toKey('active');
+    const waitKey = this.pdfQueue.toKey('wait');
+
+    await client.multi().lrem(activeKey, 0, jobId).lpush(waitKey, jobId).exec();
   }
 }
