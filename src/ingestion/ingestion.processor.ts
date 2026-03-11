@@ -33,6 +33,7 @@ export class IngestionProcessor extends WorkerHost {
   private readonly qdrantClient: QdrantClient;
   private readonly embeddings: OllamaEmbeddings;
   private readonly embeddingTimeoutMs: number;
+  private readonly maxConsecutiveEmbeddingFailures: number;
 
   constructor(
     private readonly storageService: StorageService,
@@ -48,6 +49,9 @@ export class IngestionProcessor extends WorkerHost {
     });
     this.embeddingTimeoutMs = Number(
       process.env.INGESTION_EMBEDDING_TIMEOUT_MS || 120000,
+    );
+    this.maxConsecutiveEmbeddingFailures = Number(
+      process.env.INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES || 5,
     );
 
     this.logger.log('Ingestion processor initialized');
@@ -269,6 +273,8 @@ export class IngestionProcessor extends WorkerHost {
     job: Job<PdfJobData>,
   ): Promise<(number[] | null)[]> {
     const embeddings: (number[] | null)[] = [];
+    let consecutiveFailures = 0;
+
     for (let i = 0; i < chunks.length; i++) {
       try {
         const emb = await this.withTimeout(
@@ -277,6 +283,7 @@ export class IngestionProcessor extends WorkerHost {
           `Chunk ${i + 1} embedding timed out after ${this.embeddingTimeoutMs}ms`,
         );
         embeddings.push(emb);
+        consecutiveFailures = 0;
 
         // Update progress to prevent stalling (50% -> 80% range)
         const progress = 50 + Math.floor((i / chunks.length) * 30);
@@ -293,6 +300,15 @@ export class IngestionProcessor extends WorkerHost {
           `Chunk length: ${chunks[i].pageContent.length} characters`,
         );
         embeddings.push(null);
+        consecutiveFailures++;
+
+        if (
+          consecutiveFailures >= this.maxConsecutiveEmbeddingFailures
+        ) {
+          throw new Error(
+            `Aborting fallback embedding after ${consecutiveFailures} consecutive chunk failures`,
+          );
+        }
       }
     }
 
