@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Res,
+  HttpException,
   HttpStatus,
   Header,
   Query,
@@ -33,8 +34,18 @@ export class LlmV2Controller {
   @Get('health')
   @ApiOperation({ summary: 'Health check endpoint' })
   @ApiResponse({ status: 200, description: 'Service is healthy' })
-  health(@Res() res: Response) {
-    return res.status(HttpStatus.OK).json({ status: 'ok' });
+  @ApiResponse({ status: 503, description: 'RAG is not ready' })
+  async health(@Res() res: Response) {
+    const rag = await this.ragService.getReadinessStatus();
+
+    if (!rag.ready) {
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        status: 'degraded',
+        rag,
+      });
+    }
+
+    return res.status(HttpStatus.OK).json({ status: 'ok', rag });
   }
 
   @Post('validate')
@@ -111,6 +122,10 @@ export class LlmV2Controller {
         void stream.cancel();
       });
     } catch (err: unknown) {
+      const statusCode =
+        err instanceof HttpException
+          ? err.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
       const message =
         typeof err === 'object' && err !== null && 'message' in err
           ? String((err as { message?: unknown }).message)
@@ -119,7 +134,7 @@ export class LlmV2Controller {
       // Only send error if headers haven't been sent yet
       if (!res.headersSent) {
         res
-          .status(HttpStatus.INTERNAL_SERVER_ERROR)
+          .status(statusCode)
           .json({ error: 'LLM node error', details: message });
       }
     }
@@ -270,13 +285,17 @@ export class LlmV2Controller {
       const result = await this.ragService.getCompletion(prompt);
       return res.json({ response: result });
     } catch (err: unknown) {
+      const statusCode =
+        err instanceof HttpException
+          ? err.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
       const message =
         typeof err === 'object' && err !== null && 'message' in err
           ? String((err as { message?: unknown }).message)
           : 'Unknown error';
       this.logger.error(`RAG completion error: ${message}`);
       return res
-        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .status(statusCode)
         .json({ error: 'RAG completion error', details: message });
     }
   }
