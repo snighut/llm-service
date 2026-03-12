@@ -368,7 +368,8 @@ export class IngestionController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Job is already active with lock, already queued, or not recoverable',
+    description:
+      'Job is already active with lock, already queued, or not recoverable',
     schema: {
       example: {
         status: 'not_recoverable',
@@ -575,7 +576,10 @@ export class IngestionController {
       };
     }
 
-    if (activeAgeMs !== undefined && activeAgeMs < this.staleActiveThresholdMs) {
+    if (
+      activeAgeMs !== undefined &&
+      activeAgeMs < this.staleActiveThresholdMs
+    ) {
       return {
         status: 'below_stale_threshold',
         message:

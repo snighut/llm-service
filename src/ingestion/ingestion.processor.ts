@@ -29,6 +29,12 @@ interface EmbeddingClient {
   embedDocuments(texts: string[]): Promise<number[][]>;
 }
 
+interface QdrantPoint {
+  id: string;
+  vector: number[];
+  payload: Record<string, unknown>;
+}
+
 @Processor('pdf-ingestion', {
   stalledInterval: 300000, // 5 minutes before considering stalled
   maxStalledCount: 2, // Max times to retry stalled jobs
@@ -42,6 +48,7 @@ export class IngestionProcessor extends WorkerHost {
   private readonly embeddingTimeoutMs: number;
   private readonly chunkEmbeddingTimeoutMs: number;
   private readonly maxConsecutiveEmbeddingFailures: number;
+  private readonly qdrantUpsertBatchSize: number;
 
   constructor(
     private readonly storageService: StorageService,
@@ -89,6 +96,10 @@ export class IngestionProcessor extends WorkerHost {
     );
     this.maxConsecutiveEmbeddingFailures = Number(
       process.env.INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES || 2,
+    );
+    this.qdrantUpsertBatchSize = Math.max(
+      1,
+      Number(process.env.INGESTION_QDRANT_UPSERT_BATCH_SIZE || 200),
     );
 
     this.logger.log(
@@ -207,39 +218,22 @@ export class IngestionProcessor extends WorkerHost {
       await job.updateProgress(80);
       this.logger.log('Storing chunks in Qdrant...');
 
-      const validPoints = validChunks
-        .map((chunk: DocChunk, i: number) => {
-          if (!embeddings[i]) {
-            return null;
-          }
-          return {
-            id: uuidv4(),
-            vector: embeddings[i],
-            payload: {
-              page_content: chunk.pageContent,
-              content_hash: fileHash,
-              source_file: fileName,
-              chunk_index: i,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              page_number: (chunk.metadata?.loc?.pageNumber as number) ?? 0,
-              r2_object_key: objectKey,
-              ingested_at: new Date().toISOString(),
-            },
-          };
-        })
-        .filter((p) => p !== null);
+      const processedChunks = await this.upsertPointsInBatches(
+        validChunks,
+        embeddings,
+        fileHash,
+        fileName,
+        objectKey,
+        job,
+      );
 
-      await this.qdrantClient.upsert('documents', {
-        points: validPoints,
-      });
-
-      this.logger.log(`Stored ${validPoints.length} chunks in Qdrant`);
+      this.logger.log(`Stored ${processedChunks} chunks in Qdrant`);
 
       // 6. Update database metadata
       await this.ingestionService.updateStatus(
         fileHash,
         'completed',
-        validPoints.length,
+        processedChunks,
       );
 
       // 7. Delete from R2 (cleanup)
@@ -249,13 +243,13 @@ export class IngestionProcessor extends WorkerHost {
       await job.updateProgress(100);
 
       this.logger.log(
-        `Job ${job.id} completed: ${validPoints.length} chunks stored`,
+        `Job ${job.id} completed: ${processedChunks} chunks stored`,
       );
 
       return {
         status: 'success',
         totalChunks: chunks.length,
-        processedChunks: validPoints.length,
+        processedChunks,
         fileHash,
       };
     } catch (error) {
@@ -401,6 +395,70 @@ export class IngestionProcessor extends WorkerHost {
     } finally {
       clearInterval(interval);
     }
+  }
+
+  private async upsertPointsInBatches(
+    chunks: DocChunk[],
+    embeddings: (number[] | null)[],
+    fileHash: string,
+    fileName: string,
+    objectKey: string,
+    job: Job<PdfJobData>,
+  ): Promise<number> {
+    const embeddableCount = embeddings.filter(
+      (embedding) => embedding !== null,
+    ).length;
+
+    if (embeddableCount === 0) {
+      throw new Error('No embeddings available to store in Qdrant');
+    }
+
+    const pointsBatch: QdrantPoint[] = [];
+    let storedCount = 0;
+
+    for (let i = 0; i < chunks.length; i++) {
+      const embedding = embeddings[i];
+      if (!embedding) {
+        continue;
+      }
+
+      pointsBatch.push({
+        id: uuidv4(),
+        vector: embedding,
+        payload: {
+          page_content: chunks[i].pageContent,
+          content_hash: fileHash,
+          source_file: fileName,
+          chunk_index: i,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          page_number: (chunks[i].metadata?.loc?.pageNumber as number) ?? 0,
+          r2_object_key: objectKey,
+          ingested_at: new Date().toISOString(),
+        },
+      });
+
+      if (pointsBatch.length >= this.qdrantUpsertBatchSize) {
+        await this.qdrantClient.upsert('documents', {
+          points: pointsBatch,
+        });
+        storedCount += pointsBatch.length;
+        pointsBatch.length = 0;
+
+        const progress = 80 + Math.floor((storedCount / embeddableCount) * 15);
+        await job.updateProgress(Math.min(progress, 95));
+      }
+    }
+
+    if (pointsBatch.length > 0) {
+      await this.qdrantClient.upsert('documents', {
+        points: pointsBatch,
+      });
+      storedCount += pointsBatch.length;
+      const progress = 80 + Math.floor((storedCount / embeddableCount) * 15);
+      await job.updateProgress(Math.min(progress, 95));
+    }
+
+    return storedCount;
   }
 
   @OnWorkerEvent('completed')
