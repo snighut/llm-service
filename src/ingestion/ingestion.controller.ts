@@ -256,9 +256,28 @@ export class IngestionController {
     status: 201,
     description:
       'Returns queued/requeued/already_queued/already_processing depending on queue state',
+    schema: {
+      example: {
+        status: 'queued',
+        newJobId: '32',
+        originalJobId: '29',
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Job not found' })
+  @ApiResponse({
+    status: 200,
+    description: 'Job already active/queued or below stale threshold',
+    schema: {
+      example: {
+        status: 'already_processing',
+        message: 'Job is actively being processed',
+        jobId: '29',
+        lockTtlMs: 28742,
+      },
+    },
+  })
   async retryJob(@Param('jobId') jobId: string) {
     const job = await this.pdfQueue.getJob(jobId);
     if (!job) {
@@ -267,60 +286,14 @@ export class IngestionController {
 
     const state = await job.getState();
 
+    const recoveryResult = await this.tryRecoverStaleActiveJob(job, state);
+    if (recoveryResult) {
+      return recoveryResult;
+    }
+
     // Get original job data
     const jobData = job.data as PdfJobData;
     const { objectKey, fileName, fileHash, userId } = jobData;
-
-    if (state === 'active') {
-      const lockInfo = await this.getJobLockInfo(jobId);
-      const activeAgeMs = job.processedOn
-        ? Date.now() - job.processedOn
-        : undefined;
-
-      if (lockInfo.hasLock) {
-        return {
-          status: 'already_processing',
-          message: 'Job is actively being processed',
-          jobId,
-          lockTtlMs: lockInfo.lockTtlMs,
-          activeAgeMs,
-        };
-      }
-
-      if (
-        activeAgeMs !== undefined &&
-        activeAgeMs < this.staleActiveThresholdMs
-      ) {
-        return {
-          status: 'error',
-          message:
-            'Job appears active without lock but is below stale threshold. Retry shortly.',
-          jobId,
-          activeAgeMs,
-          staleThresholdMs: this.staleActiveThresholdMs,
-        };
-      }
-
-      await this.moveActiveJobToWaiting(jobId);
-      this.logger.warn(
-        `Recovered stale active job ${jobId} (activeAgeMs=${activeAgeMs ?? -1})`,
-      );
-
-      await this.ingestionService.upsertProcessingRecord({
-        contentHash: fileHash,
-        originalFilename: fileName,
-        uploadedBy: userId,
-        jobId,
-        r2ObjectKey: objectKey,
-      });
-
-      return {
-        status: 'requeued',
-        message: 'Stale active job recovered and moved to waiting',
-        jobId,
-        activeAgeMs,
-      };
-    }
 
     if (state === 'waiting' || state === 'delayed') {
       await this.ingestionService.upsertProcessingRecord({
@@ -370,6 +343,62 @@ export class IngestionController {
       status: 'queued',
       newJobId: newJob.id,
       originalJobId: jobId,
+    };
+  }
+
+  @Post('recover/:jobId')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      'Recover a stale active job (active queue state with missing lock) and move it back to waiting',
+  })
+  @ApiParam({ name: 'jobId', description: 'BullMQ job ID', example: '13' })
+  @ApiResponse({
+    status: 201,
+    description: 'Stale job recovered and requeued',
+    schema: {
+      example: {
+        status: 'requeued',
+        message: 'Stale active job recovered and moved to waiting',
+        jobId: '29',
+        activeAgeMs: 124002,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Job is already active with lock, already queued, or not recoverable',
+    schema: {
+      example: {
+        status: 'not_recoverable',
+        message:
+          "Job is in state 'completed'. Recovery applies only to stale active jobs without a lock.",
+        jobId: '29',
+        queueState: 'completed',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async recoverJob(@Param('jobId') jobId: string) {
+    const job = await this.pdfQueue.getJob(jobId);
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    const state = await job.getState();
+    const recoveryResult = await this.tryRecoverStaleActiveJob(job, state);
+
+    if (recoveryResult) {
+      return recoveryResult;
+    }
+
+    return {
+      status: 'not_recoverable',
+      message: `Job is in state '${state}'. Recovery applies only to stale active jobs without a lock.`,
+      jobId,
+      queueState: state,
     };
   }
 
@@ -511,6 +540,72 @@ export class IngestionController {
     const waitKey = this.pdfQueue.toKey('wait');
 
     await client.multi().lrem(activeKey, 0, jobId).lpush(waitKey, jobId).exec();
+  }
+
+  private async tryRecoverStaleActiveJob(
+    job: Job,
+    state: string,
+  ): Promise<Record<string, unknown> | null> {
+    const jobId = String(job.id);
+
+    if (state === 'waiting' || state === 'delayed') {
+      return {
+        status: 'already_queued',
+        message: `Job is already queued (${state})`,
+        jobId,
+      };
+    }
+
+    if (state !== 'active') {
+      return null;
+    }
+
+    const lockInfo = await this.getJobLockInfo(jobId);
+    const activeAgeMs = job.processedOn
+      ? Date.now() - job.processedOn
+      : undefined;
+
+    if (lockInfo.hasLock) {
+      return {
+        status: 'already_processing',
+        message: 'Job is actively being processed',
+        jobId,
+        lockTtlMs: lockInfo.lockTtlMs,
+        activeAgeMs,
+      };
+    }
+
+    if (activeAgeMs !== undefined && activeAgeMs < this.staleActiveThresholdMs) {
+      return {
+        status: 'below_stale_threshold',
+        message:
+          'Job appears active without lock but is below stale threshold. Retry shortly.',
+        jobId,
+        activeAgeMs,
+        staleThresholdMs: this.staleActiveThresholdMs,
+      };
+    }
+
+    const jobData = job.data as PdfJobData;
+    await this.moveActiveJobToWaiting(jobId);
+    this.logger.warn(
+      `Recovered stale active job ${jobId} (activeAgeMs=${activeAgeMs ?? -1})`,
+    );
+
+    await this.ingestionService.upsertProcessingRecord({
+      contentHash: jobData.fileHash,
+      originalFilename: jobData.fileName,
+      uploadedBy: jobData.userId,
+      jobId,
+      r2ObjectKey: jobData.objectKey,
+    });
+
+    return {
+      status: 'requeued',
+      message: 'Stale active job recovered and moved to waiting',
+      jobId,
+      activeAgeMs,
+    };
   }
 
   private async resolveStatusView(

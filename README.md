@@ -237,6 +237,27 @@ curl -X POST http://localhost:3001/agent/generate-design \
 
 ## Troubleshooting
 
+### Ingestion Stale-Active Recovery
+
+Use this when job status shows `stale_active` (`queueStatus=active` with missing lock TTL).
+
+```bash
+# 1) Recover stale-active job back to waiting
+curl -X POST http://localhost:3002/ingestion/recover/29 \
+  -H "Authorization: Bearer YOUR_SUPABASE_JWT_TOKEN"
+
+# 2) Check status
+curl http://localhost:3002/ingestion/status/29
+
+# 3) If needed, force retry (creates new job for failed/completed)
+curl -X POST http://localhost:3002/ingestion/retry/29 \
+  -H "Authorization: Bearer YOUR_SUPABASE_JWT_TOKEN"
+
+# 4) Last-resort reset (optionally include ?deleteObject=true&deleteVectors=true)
+curl -X DELETE "http://localhost:3002/ingestion/reset/29" \
+  -H "Authorization: Bearer YOUR_SUPABASE_JWT_TOKEN"
+```
+
 ### Agent Issues
 
 **Problem**: "Failed to connect to design-service"  
