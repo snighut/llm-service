@@ -56,6 +56,22 @@ export class GenerateDesignOptionsDto {
   @IsOptional()
   @IsBoolean()
   enableValidationLoop?: boolean = true;
+
+  @ApiPropertyOptional({
+    description: 'Minimum validator score required to stop refinement loop',
+    default: 85,
+  })
+  @IsOptional()
+  @IsNumber()
+  validationThreshold?: number = 85;
+
+  @ApiPropertyOptional({
+    description: 'Maximum Planner→Designer→Validator refinement retries',
+    default: 3,
+  })
+  @IsOptional()
+  @IsNumber()
+  maxRefinementCycles?: number = 3;
 }
 
 export class GenerateDesignDto {

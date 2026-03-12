@@ -52,6 +52,17 @@ interface DesignValidationReport {
   recommendations: string[];
 }
 
+interface MultiAgentAttempt {
+  attempt: number;
+  designId: string;
+  output: string;
+  intermediateSteps: unknown[];
+  blueprint: ArchitectBlueprint;
+  design: Record<string, unknown>;
+  validation: DesignValidationReport;
+  reasoning: string[];
+}
+
 /**
  * Agent Service - Orchestrates LLM with tool calling for design generation
  */
@@ -115,7 +126,10 @@ export class AgentService {
   /**
    * Create agent executor with user-specific token
    */
-  private createAgentExecutor(accessToken: string): AgentExecutor {
+  private createAgentExecutor(
+    accessToken: string,
+    maxIterations = 15,
+  ): AgentExecutor {
     try {
       const tools = this.designToolsService.getAllTools(accessToken);
 
@@ -949,7 +963,7 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
         agent,
         tools,
         verbose: true, // Enable detailed logging
-        maxIterations: 15, // Prevent infinite loops
+        maxIterations, // Prevent infinite loops
         returnIntermediateSteps: true, // Return reasoning steps
       });
     } catch (error) {
@@ -975,104 +989,176 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
     }
 
     try {
+      const validationEnabled = dto.options?.enableValidationLoop !== false;
+      const validationThreshold = this.normalizeScoreThreshold(
+        dto.options?.validationThreshold,
+        85,
+      );
+      const maxRefinementCycles = this.normalizePositiveInt(
+        dto.options?.maxRefinementCycles,
+        3,
+      );
+      const maxDesignerIterations = this.normalizePositiveInt(
+        dto.options?.maxIterations,
+        15,
+      );
+      const totalAttempts = validationEnabled ? maxRefinementCycles + 1 : 1;
+
       const ragContext =
         dto.options?.enableRagContext === false
           ? ''
           : await this.getRagContext(dto.query);
 
-      const blueprint = await this.generateBlueprint(dto.query, ragContext);
-      const planningSummary = this.buildPlanningSummary(blueprint);
+      let blueprint = await this.generateBlueprint(dto.query, ragContext);
+      let refinementDirectives: string[] = [];
+      let bestAttempt: MultiAgentAttempt | null = null;
+      const attemptHistory: Array<{
+        attempt: number;
+        designId: string;
+        validationScore: number;
+        passed: boolean;
+        missingRequirementsCount: number;
+        gapCount: number;
+      }> = [];
 
-      // Create agent executor with user's token
-      const agentExecutor = this.createAgentExecutor(accessToken);
+      for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+        const planningSummary = this.buildPlanningSummary(blueprint);
 
-      const enrichedInput = [
-        `User query: ${dto.query}`,
-        'Follow this architecture brief strictly:',
-        planningSummary,
-        'Hard requirements:',
-        '- Select database strategy explicitly for read-heavy vs write-heavy workloads.',
-        '- Prefer async workflows (queue/stream/workers/notifications) for long-running operations.',
-        '- Include caching/CDN/coalescing/presigned URL strategies when relevant to latency and throughput.',
-        '- Ensure each generated item has context: purpose, limitations, alternatives, scalingPlan.',
-      ].join('\n\n');
-
-      // Execute agent with the query
-      const result = await agentExecutor.invoke({
-        input: enrichedInput,
-        chat_history: [], // Could be extended for conversation history
-      });
-
-      this.logger.log('Agent execution completed');
-      this.logger.log(`Agent output: ${JSON.stringify(result.output)}`);
-
-      // Extract design ID from tool results first (more reliable than parsing LLM output)
-      const designId =
-        this.extractDesignIdFromToolResults(
-          Array.isArray(result.intermediateSteps)
-            ? result.intermediateSteps
-            : [],
-        ) || this.extractDesignId(String(result.output));
-
-      if (!designId) {
-        this.logger.error(
-          `Failed to extract design ID from tool results or output`,
+        // DesignerAgent
+        const designerExecutor = this.createAgentExecutor(
+          accessToken,
+          maxDesignerIterations,
         );
-        throw new Error(
-          `Agent failed to create design or return design ID. Check if create_system_design tool was called.`,
+
+        const enrichedInput = [
+          `User query: ${dto.query}`,
+          'Follow this architecture brief strictly:',
+          planningSummary,
+          refinementDirectives.length
+            ? `Refiner directives for this attempt:\n- ${refinementDirectives.join('\n- ')}`
+            : '',
+          'Hard requirements:',
+          '- Select database strategy explicitly for read-heavy vs write-heavy workloads.',
+          '- Prefer async workflows (queue/stream/workers/notifications) for long-running operations.',
+          '- Include caching/CDN/coalescing/presigned URL strategies when relevant to latency and throughput.',
+          '- Ensure each generated item has context: purpose, limitations, alternatives, scalingPlan.',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+        const result = await designerExecutor.invoke({
+          input: enrichedInput,
+          chat_history: [],
+        });
+
+        this.logger.log(
+          `DesignerAgent attempt ${attempt}/${totalAttempts} completed`,
         );
-      }
 
-      const createdDesign = await this.designToolsService.fetchDesignById(
-        accessToken,
-        designId,
-      );
+        const intermediateSteps = Array.isArray(result.intermediateSteps)
+          ? result.intermediateSteps
+          : [];
 
-      const validation =
-        dto.options?.enableValidationLoop === false
-          ? {
-              score: 0,
+        const designId =
+          this.extractDesignIdFromToolResults(intermediateSteps) ||
+          this.extractDesignId(String(result.output));
+
+        if (!designId) {
+          throw new Error(
+            `DesignerAgent attempt ${attempt} failed to create design ID.`,
+          );
+        }
+
+        const createdDesign = await this.designToolsService.fetchDesignById(
+          accessToken,
+          designId,
+        );
+
+        // ValidatorAgent
+        const validation = validationEnabled
+          ? await this.validateDesignAgainstRequirements(
+              dto.query,
+              blueprint,
+              createdDesign,
+            )
+          : {
+              score: 100,
               passed: true,
               missingRequirements: [],
               gaps: [],
               recommendations: ['Validation loop disabled by request options'],
-            }
-          : await this.validateDesignAgainstRequirements(
-              dto.query,
-              blueprint,
-              createdDesign,
-            );
+            };
 
-      const adrBlob = {
-        id: `ADR_${designId}`,
-        designId,
-        query: dto.query,
-        generatedAt: new Date().toISOString(),
-        blueprint,
-        validation,
-      };
+        const reasoning = this.extractReasoningSteps(intermediateSteps);
 
-      await this.designToolsService.attachDesignContext(accessToken, designId, {
-        adr: adrBlob,
-        architectureBlueprint: blueprint,
-        validationReport: validation,
-      });
+        const attemptResult: MultiAgentAttempt = {
+          attempt,
+          designId,
+          output: String(result.output),
+          intermediateSteps,
+          blueprint,
+          design: createdDesign,
+          validation,
+          reasoning,
+        };
 
-      // Extract reasoning steps
-      const reasoning = this.extractReasoningSteps(
-        Array.isArray(result.intermediateSteps) ? result.intermediateSteps : [],
-      );
+        attemptHistory.push({
+          attempt,
+          designId,
+          validationScore: validation.score,
+          passed: validation.passed,
+          missingRequirementsCount: validation.missingRequirements.length,
+          gapCount: validation.gaps.length,
+        });
+
+        if (
+          !bestAttempt ||
+          attemptResult.validation.score > bestAttempt.validation.score
+        ) {
+          bestAttempt = attemptResult;
+        }
+
+        const thresholdMet =
+          !validationEnabled || validation.score >= validationThreshold;
+
+        if (thresholdMet || attempt === totalAttempts) {
+          break;
+        }
+
+        // RefinerAgent
+        refinementDirectives = await this.generateRefinementDirectives(
+          dto.query,
+          blueprint,
+          validation,
+        );
+
+        blueprint = await this.applyRefinementToBlueprint(
+          dto.query,
+          blueprint,
+          refinementDirectives,
+        );
+      }
+
+      if (!bestAttempt) {
+        throw new Error(
+          'Multi-agent orchestration failed: no design attempts were produced.',
+        );
+      }
+
+      const designId = bestAttempt.designId;
+      const validation = bestAttempt.validation;
+      const reasoning = bestAttempt.reasoning;
+      const selectedBlueprint = bestAttempt.blueprint;
 
       // Build response
       const response: DesignResultDto = {
         designId,
-        name:
-          this.extractDesignName(String(result.output)) || 'Generated Design',
+        name: this.extractDesignName(bestAttempt.output) || 'Generated Design',
         message: 'Design created successfully',
         reasoning,
         metadata: {
-          componentsCount: this.extractComponentCount(String(result.output)),
-          connectionsCount: this.extractConnectionCount(String(result.output)),
+          componentsCount: this.extractComponentCount(bestAttempt.output),
+          connectionsCount: this.extractConnectionCount(bestAttempt.output),
           processingTimeMs: Date.now() - startTime,
           templateUsed: reasoning.some(
             (step) =>
@@ -1080,8 +1166,42 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
           ),
           validationScore: validation.score,
           adrId: `ADR_${designId}`,
+          validationThreshold,
+          thresholdMet:
+            !validationEnabled || validation.score >= validationThreshold,
+          refinementCyclesUsed: Math.max(0, attemptHistory.length - 1),
+        },
+        validationDetails: {
+          score: validation.score,
+          passed: validation.passed,
+          missingRequirements: validation.missingRequirements,
+          gaps: validation.gaps,
+          recommendations: validation.recommendations,
+          attempts: attemptHistory,
         },
       };
+
+      const adrBlob = {
+        id: `ADR_${designId}`,
+        designId,
+        query: dto.query,
+        generatedAt: new Date().toISOString(),
+        blueprint: selectedBlueprint,
+        validation,
+        multiAgent: {
+          enabled: true,
+          validationEnabled,
+          validationThreshold,
+          maxRefinementCycles,
+          attempts: attemptHistory,
+        },
+      };
+
+      await this.designToolsService.attachDesignContext(accessToken, designId, {
+        adr: adrBlob,
+        architectureBlueprint: selectedBlueprint,
+        validationReport: validation,
+      });
 
       this.logger.log(`Design generated successfully: ${designId}`);
       return response;
@@ -1225,6 +1345,72 @@ Rules:
     return lines.join('\n\n');
   }
 
+  private async generateRefinementDirectives(
+    query: string,
+    blueprint: ArchitectBlueprint,
+    validation: DesignValidationReport,
+  ): Promise<string[]> {
+    const fallback = [
+      'Add missing components and connections required by validator gaps.',
+      'Ensure every design item has purpose, limitations, alternatives, and scalingPlan in context.',
+      'Address missing functional requirements with explicit APIs or async workflows.',
+    ];
+
+    const prompt = `You are a RefinerAgent for system design quality.
+Return STRICT JSON only as: { "directives": string[] }.
+
+User request: ${query}
+Blueprint:
+${JSON.stringify(blueprint)}
+Validation report:
+${JSON.stringify(validation)}
+
+Create concise, actionable directives for the next DesignerAgent attempt.
+Prioritize fixing missingRequirements and gaps first.`;
+
+    const parsed = await this.invokeJsonPrompt<{ directives?: string[] }>(
+      prompt,
+      { directives: fallback },
+    );
+
+    const directives = Array.isArray(parsed.directives)
+      ? parsed.directives.filter(
+          (directive): directive is string =>
+            typeof directive === 'string' && directive.trim().length > 0,
+        )
+      : fallback;
+
+    return directives.length > 0 ? directives : fallback;
+  }
+
+  private async applyRefinementToBlueprint(
+    query: string,
+    currentBlueprint: ArchitectBlueprint,
+    directives: string[],
+  ): Promise<ArchitectBlueprint> {
+    if (!directives.length) {
+      return currentBlueprint;
+    }
+
+    const prompt = `You are a PlannerAgent refining an architecture blueprint.
+Return STRICT JSON only with EXACT blueprint schema.
+
+User request: ${query}
+Current blueprint:
+${JSON.stringify(currentBlueprint)}
+
+Refiner directives:
+- ${directives.join('\n- ')}
+
+Rules:
+- Preserve valid existing blueprint details.
+- Update actors/requirements/entities/apis/asyncWorkflows/recommendedDesignTypes to address directives.
+- Keep output practical for high-scale systems and maintain consistency.
+`;
+
+    return this.invokeJsonPrompt<ArchitectBlueprint>(prompt, currentBlueprint);
+  }
+
   private async validateDesignAgainstRequirements(
     query: string,
     blueprint: ArchitectBlueprint,
@@ -1329,6 +1515,41 @@ Rules:
 
       return null;
     }
+  }
+
+  private normalizePositiveInt(
+    value: number | undefined,
+    fallback: number,
+  ): number {
+    if (!Number.isFinite(value) || value === undefined) {
+      return fallback;
+    }
+
+    const intValue = Math.floor(value);
+    if (intValue < 1) {
+      return fallback;
+    }
+
+    return intValue;
+  }
+
+  private normalizeScoreThreshold(
+    value: number | undefined,
+    fallback: number,
+  ): number {
+    if (!Number.isFinite(value) || value === undefined) {
+      return fallback;
+    }
+
+    if (value < 0) {
+      return 0;
+    }
+
+    if (value > 100) {
+      return 100;
+    }
+
+    return Math.floor(value);
   }
 
   /**
