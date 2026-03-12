@@ -2,19 +2,24 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
+  Query,
   NotFoundException,
+  ConflictException,
   Logger,
   UseGuards,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
+import { QdrantClient } from '@qdrant/js-client-rest';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -34,6 +39,7 @@ interface PdfJobData {
 @Controller('ingestion')
 export class IngestionController {
   private readonly logger = new Logger(IngestionController.name);
+  private readonly qdrantClient: QdrantClient;
   private readonly staleActiveThresholdMs = Number(
     process.env.INGESTION_STALE_ACTIVE_MS || 60000,
   );
@@ -42,7 +48,11 @@ export class IngestionController {
     private readonly storageService: StorageService,
     private readonly ingestionService: IngestionService,
     @InjectQueue('pdf-ingestion') private pdfQueue: Queue,
-  ) {}
+  ) {
+    this.qdrantClient = new QdrantClient({
+      url: process.env.QDRANT_URL || 'http://localhost:6333',
+    });
+  }
 
   @Post('upload-url')
   @UseGuards(SupabaseAuthGuard)
@@ -360,6 +370,124 @@ export class IngestionController {
       status: 'queued',
       newJobId: newJob.id,
       originalJobId: jobId,
+    };
+  }
+
+  @Delete('reset/:jobId')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      'Delete ingestion state for a job (queue + metadata), with optional vector/object cleanup',
+  })
+  @ApiParam({ name: 'jobId', description: 'BullMQ job ID', example: '13' })
+  @ApiQuery({
+    name: 'deleteObject',
+    required: false,
+    type: String,
+    example: 'true',
+    description: 'Set to true to also delete the R2 object key from metadata',
+  })
+  @ApiQuery({
+    name: 'deleteVectors',
+    required: false,
+    type: String,
+    example: 'true',
+    description: 'Set to true to also delete Qdrant vectors by content_hash',
+  })
+  @ApiResponse({ status: 200, description: 'Ingestion state reset completed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 409, description: 'Job is actively running' })
+  @ApiResponse({ status: 404, description: 'Job and metadata not found' })
+  async resetJob(
+    @Param('jobId') jobId: string,
+    @Query('deleteObject') deleteObject?: string,
+    @Query('deleteVectors') deleteVectors?: string,
+  ) {
+    const shouldDeleteObject = deleteObject === 'true';
+    const shouldDeleteVectors = deleteVectors === 'true';
+
+    const fileUpload = await this.ingestionService.findByJobId(jobId);
+    let job = await this.pdfQueue.getJob(jobId);
+
+    if (!fileUpload && !job) {
+      throw new NotFoundException('Job and metadata not found');
+    }
+
+    let queueState: string | null = null;
+    let removedQueueJob = false;
+
+    if (job) {
+      queueState = await job.getState();
+
+      if (queueState === 'active') {
+        const lockInfo = await this.getJobLockInfo(jobId);
+
+        if (lockInfo.hasLock) {
+          throw new ConflictException(
+            'Cannot reset an actively running job with a valid lock. Retry later.',
+          );
+        }
+
+        await this.moveActiveJobToWaiting(jobId);
+        job = await this.pdfQueue.getJob(jobId);
+      }
+
+      if (job) {
+        await job.remove();
+        removedQueueJob = true;
+      }
+    }
+
+    let deletedObject = false;
+    if (shouldDeleteObject && fileUpload?.r2_object_key) {
+      try {
+        await this.storageService.deleteFile(fileUpload.r2_object_key);
+        deletedObject = true;
+      } catch (error) {
+        this.logger.warn(
+          `Failed optional object deletion for job ${jobId}`,
+          error,
+        );
+      }
+    }
+
+    let deletedVectors = false;
+    if (shouldDeleteVectors && fileUpload?.content_hash) {
+      try {
+        await this.qdrantClient.delete('documents', {
+          filter: {
+            must: [
+              {
+                key: 'content_hash',
+                match: {
+                  value: fileUpload.content_hash,
+                },
+              },
+            ],
+          },
+        });
+        deletedVectors = true;
+      } catch (error) {
+        this.logger.warn(
+          `Failed optional vector deletion for job ${jobId}`,
+          error,
+        );
+      }
+    }
+
+    const deletedMetadataRows =
+      await this.ingestionService.deleteByJobId(jobId);
+
+    return {
+      status: 'reset',
+      jobId,
+      queueState,
+      removedQueueJob,
+      deletedMetadataRows,
+      deletedObject,
+      deletedVectors,
+      contentHash: fileUpload?.content_hash,
     };
   }
 

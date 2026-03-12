@@ -113,4 +113,12 @@ export class IngestionService {
       take: limit,
     });
   }
+
+  /**
+   * Delete upload metadata by job ID
+   */
+  async deleteByJobId(jobId: string): Promise<number> {
+    const result = await this.fileUploadRepository.delete({ job_id: jobId });
+    return result.affected ?? 0;
+  }
 }
