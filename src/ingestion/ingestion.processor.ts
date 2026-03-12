@@ -63,11 +63,21 @@ export class IngestionProcessor extends WorkerHost {
     ).toLowerCase();
 
     if (requestedProvider === 'openai' && process.env.OPENAI_API_KEY) {
+      const configuredOpenAiDimensions = Number(
+        process.env.INGESTION_OPENAI_EMBEDDING_DIMENSIONS || 1024,
+      );
+      const openAiDimensions =
+        Number.isFinite(configuredOpenAiDimensions) &&
+        configuredOpenAiDimensions > 0
+          ? Math.floor(configuredOpenAiDimensions)
+          : undefined;
+
       this.embeddings = new OpenAIEmbeddings({
         model:
           process.env.INGESTION_OPENAI_EMBEDDING_MODEL ||
           'text-embedding-3-large',
         apiKey: process.env.OPENAI_API_KEY,
+        ...(openAiDimensions ? { dimensions: openAiDimensions } : {}),
       });
       this.embeddingProvider = 'openai';
     } else {
