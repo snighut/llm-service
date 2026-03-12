@@ -38,6 +38,10 @@ interface Design {
   id: string;
   name: string;
   description?: string;
+  thumbnail?: string;
+  uidata?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  designGroups?: Array<Record<string, unknown>>;
   items?: DesignItem[];
   connections?: DesignConnection[];
 }
@@ -968,6 +972,82 @@ export class DesignToolsService {
       tags.add(item.type);
     });
     return Array.from(tags);
+  }
+
+  async fetchDesignById(
+    authToken: string,
+    designId: string,
+  ): Promise<Record<string, unknown>> {
+    const response = await firstValueFrom(
+      this.httpService.get(
+        `${this.designServiceUrl}/api/v1/designs/${designId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        },
+      ),
+    );
+
+    return response.data as Record<string, unknown>;
+  }
+
+  async attachDesignContext(
+    authToken: string,
+    designId: string,
+    contextPatch: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const current = await this.fetchDesignById(authToken, designId);
+
+      const existingContext =
+        current.context && typeof current.context === 'object'
+          ? (current.context as Record<string, unknown>)
+          : {};
+
+      const name =
+        typeof current.name === 'string' && current.name.length > 0
+          ? current.name
+          : 'Generated Design';
+      const description =
+        typeof current.description === 'string' ? current.description : '';
+
+      const payload = {
+        name,
+        description,
+        thumbnail: current.thumbnail || null,
+        uidata: current.uidata || null,
+        context: {
+          ...existingContext,
+          ...contextPatch,
+        },
+        items: Array.isArray(current.items) ? current.items : [],
+        connections: Array.isArray(current.connections)
+          ? current.connections
+          : [],
+        designGroups: Array.isArray(current.designGroups)
+          ? current.designGroups
+          : [],
+      };
+
+      await firstValueFrom(
+        this.httpService.put(
+          `${this.designServiceUrl}/api/v1/designs/${designId}`,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
+        ),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Failed to attach context for design ${designId}: ${message}`,
+      );
+      throw error;
+    }
   }
 
   /**

@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { OllamaEmbeddings } from '@langchain/ollama';
+import { OpenAIEmbeddings } from '@langchain/openai';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { StorageService } from '../storage/storage.service';
@@ -23,6 +24,11 @@ interface DocChunk {
   metadata: Record<string, any>;
 }
 
+interface EmbeddingClient {
+  embedQuery(text: string): Promise<number[]>;
+  embedDocuments(texts: string[]): Promise<number[][]>;
+}
+
 @Processor('pdf-ingestion', {
   stalledInterval: 300000, // 5 minutes before considering stalled
   maxStalledCount: 2, // Max times to retry stalled jobs
@@ -31,7 +37,8 @@ interface DocChunk {
 export class IngestionProcessor extends WorkerHost {
   private readonly logger = new Logger(IngestionProcessor.name);
   private readonly qdrantClient: QdrantClient;
-  private readonly embeddings: OllamaEmbeddings;
+  private readonly embeddings: EmbeddingClient;
+  private readonly embeddingProvider: string;
   private readonly embeddingTimeoutMs: number;
   private readonly chunkEmbeddingTimeoutMs: number;
   private readonly maxConsecutiveEmbeddingFailures: number;
@@ -44,21 +51,49 @@ export class IngestionProcessor extends WorkerHost {
     this.qdrantClient = new QdrantClient({
       url: process.env.QDRANT_URL || 'http://localhost:6333',
     });
-    this.embeddings = new OllamaEmbeddings({
-      model: 'mxbai-embed-large',
-      baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434',
-    });
+    const requestedProvider = (
+      process.env.INGESTION_EMBEDDING_PROVIDER || 'ollama'
+    ).toLowerCase();
+
+    if (requestedProvider === 'openai' && process.env.OPENAI_API_KEY) {
+      this.embeddings = new OpenAIEmbeddings({
+        model:
+          process.env.INGESTION_OPENAI_EMBEDDING_MODEL ||
+          'text-embedding-3-large',
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+      this.embeddingProvider = 'openai';
+    } else {
+      if (requestedProvider === 'openai' && !process.env.OPENAI_API_KEY) {
+        this.logger.warn(
+          'INGESTION_EMBEDDING_PROVIDER=openai requested but OPENAI_API_KEY is missing; falling back to ollama embeddings',
+        );
+      } else if (requestedProvider !== 'ollama') {
+        this.logger.warn(
+          `Unknown INGESTION_EMBEDDING_PROVIDER='${requestedProvider}', falling back to ollama embeddings`,
+        );
+      }
+
+      this.embeddings = new OllamaEmbeddings({
+        model:
+          process.env.INGESTION_OLLAMA_EMBEDDING_MODEL || 'mxbai-embed-large',
+        baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434',
+      });
+      this.embeddingProvider = 'ollama';
+    }
     this.embeddingTimeoutMs = Number(
-      process.env.INGESTION_EMBEDDING_TIMEOUT_MS || 120000,
+      process.env.INGESTION_EMBEDDING_TIMEOUT_MS || 900000,
     );
     this.chunkEmbeddingTimeoutMs = Number(
-      process.env.INGESTION_CHUNK_EMBEDDING_TIMEOUT_MS || 45000,
+      process.env.INGESTION_CHUNK_EMBEDDING_TIMEOUT_MS || 330000,
     );
     this.maxConsecutiveEmbeddingFailures = Number(
-      process.env.INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES || 5,
+      process.env.INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES || 2,
     );
 
-    this.logger.log('Ingestion processor initialized');
+    this.logger.log(
+      `Ingestion processor initialized (embedding provider: ${this.embeddingProvider})`,
+    );
   }
 
   async process(job: Job<PdfJobData>): Promise<{
@@ -306,9 +341,7 @@ export class IngestionProcessor extends WorkerHost {
         embeddings.push(null);
         consecutiveFailures++;
 
-        if (
-          consecutiveFailures >= this.maxConsecutiveEmbeddingFailures
-        ) {
+        if (consecutiveFailures >= this.maxConsecutiveEmbeddingFailures) {
           throw new Error(
             `Aborting fallback embedding after ${consecutiveFailures} consecutive chunk failures`,
           );

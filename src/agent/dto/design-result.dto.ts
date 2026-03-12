@@ -15,6 +15,14 @@ export class DesignResultMetadataDto {
 
   @ApiPropertyOptional({ description: 'Template ID if used' })
   templateId?: string;
+
+  @ApiPropertyOptional({ description: 'Validation score (0-100)' })
+  validationScore?: number;
+
+  @ApiPropertyOptional({
+    description: 'ADR identifier linked to generated design',
+  })
+  adrId?: string;
 }
 
 export class DesignResultDto {

@@ -11,5 +11,6 @@ import { LoggerService } from '../logs/logger.service';
   imports: [HttpModule],
   providers: [LlmService, LlmV2Service, RagService, LoggerService],
   controllers: [LlmController, LlmV2Controller],
+  exports: [RagService],
 })
 export class LlmModule {}

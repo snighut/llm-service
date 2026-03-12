@@ -164,6 +164,50 @@ src/
 | `QDRANT_URL`            | Qdrant vector store URL     | `http://localhost:6333`                    |
 | `SUPABASE_JWT_AUDIENCE` | Supabase JWT audience claim | `authenticated`                            |
 | `SUPABASE_JWT_ISSUER`   | Supabase JWT issuer URL     | `https://your-project.supabase.co/auth/v1` |
+| `INGESTION_EMBEDDING_PROVIDER` | Embedding backend for PDF ingestion (`ollama` or `openai`) | `openai` |
+| `INGESTION_OPENAI_EMBEDDING_MODEL` | OpenAI embedding model used when provider is `openai` | `text-embedding-3-large` |
+| `INGESTION_OLLAMA_EMBEDDING_MODEL` | Ollama embedding model used when provider is `ollama` | `mxbai-embed-large` |
+| `INGESTION_EMBEDDING_TIMEOUT_MS` | Batch embedding timeout (ms) | `900000` |
+| `INGESTION_CHUNK_EMBEDDING_TIMEOUT_MS` | Per-chunk embedding timeout (ms) | `330000` |
+| `INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES` | Abort threshold for sequential chunk failures | `2` |
+
+### Toggle ingestion embedding provider
+
+You can switch **PDF ingestion embeddings only** without changing chat model behavior.
+
+Use OpenAI embeddings:
+
+```bash
+INGESTION_EMBEDDING_PROVIDER=openai
+INGESTION_OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+OPENAI_API_KEY=your_key_here
+```
+
+Use Ollama embeddings:
+
+```bash
+INGESTION_EMBEDDING_PROVIDER=ollama
+INGESTION_OLLAMA_EMBEDDING_MODEL=mxbai-embed-large
+OLLAMA_HOST=http://ubuntu-server:11434
+```
+
+Kubernetes quick toggle (worker only):
+
+```bash
+# Switch to OpenAI embeddings
+kubectl -n production set env deploy/llm-service-worker \
+  INGESTION_EMBEDDING_PROVIDER=openai \
+  INGESTION_OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+
+# Switch back to Ollama embeddings
+kubectl -n production set env deploy/llm-service-worker \
+  INGESTION_EMBEDDING_PROVIDER=ollama \
+  INGESTION_OLLAMA_EMBEDDING_MODEL=mxbai-embed-large
+
+kubectl -n production rollout restart deploy/llm-service-worker
+```
+
+> ⚠️ If you switch embedding provider/model, vector dimensions may change. Recreate/reindex the `documents` collection (or use a new collection) before ingesting new PDFs to avoid Qdrant dimension mismatch errors.
 
 ## Authentication
 

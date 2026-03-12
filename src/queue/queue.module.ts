@@ -18,7 +18,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     BullModule.registerQueue({
       name: 'pdf-ingestion',
       defaultJobOptions: {
-        attempts: 3,
+        attempts: 1,
         backoff: {
           type: 'exponential',
           delay: 5000,

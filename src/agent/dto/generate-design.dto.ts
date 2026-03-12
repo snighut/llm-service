@@ -40,6 +40,22 @@ export class GenerateDesignOptionsDto {
   @IsOptional()
   @IsNumber()
   maxIterations?: number = 10;
+
+  @ApiPropertyOptional({
+    description: 'Enable RAG context grounding for design generation',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  enableRagContext?: boolean = true;
+
+  @ApiPropertyOptional({
+    description: 'Enable strict requirement-to-design validation loop',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  enableValidationLoop?: boolean = true;
 }
 
 export class GenerateDesignDto {

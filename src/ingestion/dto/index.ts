@@ -11,8 +11,7 @@ export class GetUploadUrlDto {
   fileName: string;
 
   @ApiProperty({
-    example:
-      'a2f68b37d4f3f30659483474752c97a01817aabe7376ed589b552d07c8cd3b82',
+    example: 'a2f68b37d4f3f30659483474752c97a01817aabe7376ed589b552d07c8cd3b82',
     description: 'SHA-256 hash of the file content for deduplication',
   })
   @IsString()
@@ -47,8 +46,7 @@ export class TriggerProcessingDto {
   fileName: string;
 
   @ApiProperty({
-    example:
-      'a2f68b37d4f3f30659483474752c97a01817aabe7376ed589b552d07c8cd3b82',
+    example: 'a2f68b37d4f3f30659483474752c97a01817aabe7376ed589b552d07c8cd3b82',
     description: 'SHA-256 hash of the file content',
   })
   @IsString()

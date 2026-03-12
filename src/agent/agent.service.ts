@@ -10,6 +10,47 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { DesignToolsService } from './tools/design-tools.service';
 import { GenerateDesignDto } from './dto/generate-design.dto';
 import { DesignResultDto } from './dto/design-result.dto';
+import { RagService } from '../llm/rag.service';
+
+interface ArchitectApiDefinition {
+  name: string;
+  method: string;
+  path: string;
+  purpose: string;
+  request?: Record<string, unknown>;
+  responseMetadata?: Record<string, unknown>;
+}
+
+interface ArchitectAsyncWorkflow {
+  name: string;
+  trigger: string;
+  queueOrStream: string;
+  consumers: string[];
+  outcome: string;
+}
+
+interface ArchitectBlueprint {
+  actors: string[];
+  functionalRequirements: string[];
+  nonFunctionalRequirements: string[];
+  scalabilityDecisions: string[];
+  entities: Array<{
+    name: string;
+    purpose: string;
+    keyFields: string[];
+  }>;
+  apis: ArchitectApiDefinition[];
+  asyncWorkflows: ArchitectAsyncWorkflow[];
+  recommendedDesignTypes: string[];
+}
+
+interface DesignValidationReport {
+  score: number;
+  passed: boolean;
+  missingRequirements: string[];
+  gaps: string[];
+  recommendations: string[];
+}
 
 /**
  * Agent Service - Orchestrates LLM with tool calling for design generation
@@ -22,7 +63,10 @@ export class AgentService {
   private initializationError: Error | null = null;
   private readonly provider: string;
 
-  constructor(private readonly designToolsService: DesignToolsService) {
+  constructor(
+    private readonly designToolsService: DesignToolsService,
+    private readonly ragService: RagService,
+  ) {
     // Determine which LLM provider to use
     this.provider = process.env.LLM_PROVIDER || 'ollama';
 
@@ -87,6 +131,14 @@ Your capabilities:
 - Create comprehensive system architecture designs with components and connections
 
 CRITICAL: Your ONLY job is to create visual system designs using the create_system_design tool. Do NOT provide textual explanations.
+
+MANDATORY ENRICHED CONTEXT:
+- For EVERY item in items[], include context object with keys:
+  - purpose
+  - limitations
+  - alternatives
+  - scalingPlan
+- If a requested design type is missing from supported visual types, use type: "text-box" and encode missing design type info in item.context.
 
 Your workflow:
 1. Understand the user's requirements
@@ -923,11 +975,31 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
     }
 
     try {
+      const ragContext =
+        dto.options?.enableRagContext === false
+          ? ''
+          : await this.getRagContext(dto.query);
+
+      const blueprint = await this.generateBlueprint(dto.query, ragContext);
+      const planningSummary = this.buildPlanningSummary(blueprint);
+
       // Create agent executor with user's token
       const agentExecutor = this.createAgentExecutor(accessToken);
+
+      const enrichedInput = [
+        `User query: ${dto.query}`,
+        'Follow this architecture brief strictly:',
+        planningSummary,
+        'Hard requirements:',
+        '- Select database strategy explicitly for read-heavy vs write-heavy workloads.',
+        '- Prefer async workflows (queue/stream/workers/notifications) for long-running operations.',
+        '- Include caching/CDN/coalescing/presigned URL strategies when relevant to latency and throughput.',
+        '- Ensure each generated item has context: purpose, limitations, alternatives, scalingPlan.',
+      ].join('\n\n');
+
       // Execute agent with the query
       const result = await agentExecutor.invoke({
-        input: dto.query,
+        input: enrichedInput,
         chat_history: [], // Could be extended for conversation history
       });
 
@@ -951,6 +1023,41 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
         );
       }
 
+      const createdDesign = await this.designToolsService.fetchDesignById(
+        accessToken,
+        designId,
+      );
+
+      const validation =
+        dto.options?.enableValidationLoop === false
+          ? {
+              score: 0,
+              passed: true,
+              missingRequirements: [],
+              gaps: [],
+              recommendations: ['Validation loop disabled by request options'],
+            }
+          : await this.validateDesignAgainstRequirements(
+              dto.query,
+              blueprint,
+              createdDesign,
+            );
+
+      const adrBlob = {
+        id: `ADR_${designId}`,
+        designId,
+        query: dto.query,
+        generatedAt: new Date().toISOString(),
+        blueprint,
+        validation,
+      };
+
+      await this.designToolsService.attachDesignContext(accessToken, designId, {
+        adr: adrBlob,
+        architectureBlueprint: blueprint,
+        validationReport: validation,
+      });
+
       // Extract reasoning steps
       const reasoning = this.extractReasoningSteps(
         Array.isArray(result.intermediateSteps) ? result.intermediateSteps : [],
@@ -971,6 +1078,8 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
             (step) =>
               step.includes('template') || step.includes('existing design'),
           ),
+          validationScore: validation.score,
+          adrId: `ADR_${designId}`,
         },
       };
 
@@ -982,6 +1091,243 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
       const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(`Error generating design: ${errorMessage}`, errorStack);
       throw error;
+    }
+  }
+
+  private async getRagContext(query: string): Promise<string> {
+    try {
+      const docs = await this.ragService.getRelevantDocuments(query);
+      const snippets = docs
+        .slice(0, 5)
+        .map((doc, index) => {
+          const content =
+            typeof doc?.payload?.page_content === 'string'
+              ? doc.payload.page_content
+              : '';
+          return `RAG_${index + 1}: ${content.slice(0, 1200)}`;
+        })
+        .filter(Boolean);
+      return snippets.join('\n\n');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(
+        `RAG context unavailable, proceeding without it: ${message}`,
+      );
+      return '';
+    }
+  }
+
+  private async generateBlueprint(
+    query: string,
+    ragContext: string,
+  ): Promise<ArchitectBlueprint> {
+    const fallback: ArchitectBlueprint = {
+      actors: ['End User'],
+      functionalRequirements: ['Core request handling'],
+      nonFunctionalRequirements: ['Scalability', 'Low latency', 'Reliability'],
+      scalabilityDecisions: [
+        'Use caching for read-heavy paths',
+        'Use queue/stream for long-running operations',
+      ],
+      entities: [
+        {
+          name: 'PrimaryDomainEntity',
+          purpose: 'Core business object',
+          keyFields: ['id', 'createdAt', 'updatedAt'],
+        },
+      ],
+      apis: [
+        {
+          name: 'GetResource',
+          method: 'GET',
+          path: '/api/v1/resources/{id}',
+          purpose: 'Fetch resource details',
+          responseMetadata: {
+            requestId: 'uuid',
+            timestamp: 'iso8601',
+            latencyMs: 'number',
+          },
+        },
+      ],
+      asyncWorkflows: [
+        {
+          name: 'BackgroundProcessing',
+          trigger: 'API request accepted',
+          queueOrStream: 'message-queue',
+          consumers: ['worker-service'],
+          outcome: 'Async processing completed and user notified',
+        },
+      ],
+      recommendedDesignTypes: ['microservices', 'event-driven'],
+    };
+
+    const prompt = `You are a principal system architect. Produce STRICT JSON only.
+
+Given this system design request:
+${query}
+
+RAG context (can be empty):
+${ragContext || 'N/A'}
+
+Return JSON with this exact shape:
+{
+  "actors": string[],
+  "functionalRequirements": string[],
+  "nonFunctionalRequirements": string[],
+  "scalabilityDecisions": string[],
+  "entities": [{ "name": string, "purpose": string, "keyFields": string[] }],
+  "apis": [{ "name": string, "method": string, "path": string, "purpose": string, "request": object, "responseMetadata": object }],
+  "asyncWorkflows": [{ "name": string, "trigger": string, "queueOrStream": string, "consumers": string[], "outcome": string }],
+  "recommendedDesignTypes": string[]
+}
+
+Rules:
+- Include actors/roles across users + internal services.
+- Include concrete functional requirements.
+- Include non-functional requirements for million+ DAU scale.
+- Include DB, coupling, async processing, caching/CDN/coalescing/presigned upload choices in scalabilityDecisions when applicable.
+- If a design type may be unsupported in renderer, still include it in recommendedDesignTypes.
+`;
+
+    return this.invokeJsonPrompt(prompt, fallback);
+  }
+
+  private buildPlanningSummary(blueprint: ArchitectBlueprint): string {
+    const lines: string[] = [];
+    lines.push(`Actors: ${blueprint.actors.join(', ')}`);
+    lines.push(
+      `Functional requirements:\n- ${blueprint.functionalRequirements.join('\n- ')}`,
+    );
+    lines.push(
+      `Non-functional requirements:\n- ${blueprint.nonFunctionalRequirements.join('\n- ')}`,
+    );
+    lines.push(
+      `Scalability decisions:\n- ${blueprint.scalabilityDecisions.join('\n- ')}`,
+    );
+    lines.push(
+      `Entities:\n- ${blueprint.entities
+        .map((entity) => `${entity.name}: ${entity.purpose}`)
+        .join('\n- ')}`,
+    );
+    lines.push(
+      `APIs:\n- ${blueprint.apis
+        .map((api) => `${api.method} ${api.path} (${api.purpose})`)
+        .join('\n- ')}`,
+    );
+    lines.push(
+      `Async workflows:\n- ${blueprint.asyncWorkflows
+        .map((workflow) => `${workflow.name} via ${workflow.queueOrStream}`)
+        .join('\n- ')}`,
+    );
+    lines.push(
+      `Recommended design types: ${blueprint.recommendedDesignTypes.join(', ')}`,
+    );
+    return lines.join('\n\n');
+  }
+
+  private async validateDesignAgainstRequirements(
+    query: string,
+    blueprint: ArchitectBlueprint,
+    design: Record<string, unknown>,
+  ): Promise<DesignValidationReport> {
+    const fallback: DesignValidationReport = {
+      score: 70,
+      passed: true,
+      missingRequirements: [],
+      gaps: [],
+      recommendations: [],
+    };
+
+    const prompt = `You are a strict architecture validator. Return STRICT JSON only.
+
+User request: ${query}
+
+Blueprint:
+${JSON.stringify(blueprint)}
+
+Generated design:
+${JSON.stringify(design)}
+
+Return JSON with exact shape:
+{
+  "score": number,
+  "passed": boolean,
+  "missingRequirements": string[],
+  "gaps": string[],
+  "recommendations": string[]
+}
+
+Rules:
+- score is 0-100.
+- Mark missing requirements not covered by components, connections, or contexts.
+- Verify if generated items include purpose/limitations/alternatives/scaling context.
+- Verify read-heavy/write-heavy DB choices, async workflows, and scale strategies where relevant.
+`;
+
+    return this.invokeJsonPrompt(prompt, fallback);
+  }
+
+  private async invokeJsonPrompt<T>(prompt: string, fallback: T): Promise<T> {
+    try {
+      const output = await this.llm.invoke(prompt);
+      const content = this.extractContent(output);
+      const parsed = this.parseJsonBlock<T>(content);
+      return parsed ?? fallback;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Structured prompt failed, using fallback: ${message}`);
+      return fallback;
+    }
+  }
+
+  private extractContent(output: unknown): string {
+    if (typeof output === 'string') {
+      return output;
+    }
+
+    if (output && typeof output === 'object' && 'content' in output) {
+      const content = (output as { content: unknown }).content;
+      if (typeof content === 'string') {
+        return content;
+      }
+
+      if (Array.isArray(content)) {
+        return content
+          .map((part) =>
+            typeof part === 'string' ? part : JSON.stringify(part, null, 2),
+          )
+          .join('\n');
+      }
+    }
+
+    return JSON.stringify(output);
+  }
+
+  private parseJsonBlock<T>(content: string): T | null {
+    const cleaned = content.trim();
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch {
+      const fenced = cleaned.match(/```json\s*([\s\S]*?)```/i);
+      if (fenced && fenced[1]) {
+        try {
+          return JSON.parse(fenced[1].trim()) as T;
+        } catch {
+          return null;
+        }
+      }
+
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        try {
+          return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as T;
+        } catch {
+          return null;
+        }
+      }
+
+      return null;
     }
   }
 
