@@ -55,6 +55,5 @@ flux reconcile kustomization llm-service
 echo -e "${GREEN}✅ Flux reconciliation complete${NC}"
 
 # Step 5: Watch pods
-echo -e "${BLUE}👀 Watching pods in production namespace...${NC}"
-echo -e "${BLUE}Press Ctrl+C to exit${NC}"
-kubectl get pods -n production -w
+echo -e "${BLUE}Watching for changes... Press Ctrl+C to exit${NC}"
+kubectl get pods -n production --sort-by=.metadata.creationTimestamp -w
