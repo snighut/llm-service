@@ -2,50 +2,50 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ValidationAttemptSummaryDto {
   @ApiProperty({ description: 'Attempt index (1-based)' })
-  attempt: number;
+  attempt!: number;
 
   @ApiProperty({ description: 'Design ID generated in this attempt' })
-  designId: string;
+  designId!: string;
 
   @ApiProperty({ description: 'Validation score for this attempt' })
-  validationScore: number;
+  validationScore!: number;
 
   @ApiProperty({ description: 'Whether this attempt passed validator checks' })
-  passed: boolean;
+  passed!: boolean;
 
   @ApiProperty({ description: 'Count of missing requirements in this attempt' })
-  missingRequirementsCount: number;
+  missingRequirementsCount!: number;
 
   @ApiProperty({ description: 'Count of detected gaps in this attempt' })
-  gapCount: number;
+  gapCount!: number;
 }
 
 export class ValidationDetailsDto {
   @ApiProperty({ description: 'Final validator score (0-100)' })
-  score: number;
+  score!: number;
 
   @ApiProperty({
     description: 'Whether final validator pass criteria were met',
   })
-  passed: boolean;
+  passed!: boolean;
 
   @ApiProperty({
     description: 'Requirements identified as missing in final selection',
     type: [String],
   })
-  missingRequirements: string[];
+  missingRequirements!: string[];
 
   @ApiProperty({
     description: 'Architecture gaps identified in final selection',
     type: [String],
   })
-  gaps: string[];
+  gaps!: string[];
 
   @ApiProperty({
     description: 'Actionable improvement recommendations from validator',
     type: [String],
   })
-  recommendations: string[];
+  recommendations!: string[];
 
   @ApiPropertyOptional({
     description: 'Per-attempt validation summary for multi-agent retries',
@@ -56,13 +56,13 @@ export class ValidationDetailsDto {
 
 export class DesignResultMetadataDto {
   @ApiProperty({ description: 'Number of components created' })
-  componentsCount: number;
+  componentsCount!: number;
 
   @ApiProperty({ description: 'Number of connections created' })
-  connectionsCount: number;
+  connectionsCount!: number;
 
   @ApiProperty({ description: 'Processing time in milliseconds' })
-  processingTimeMs: number;
+  processingTimeMs!: number;
 
   @ApiPropertyOptional({ description: 'Whether a template was used' })
   templateUsed?: boolean;
@@ -88,17 +88,22 @@ export class DesignResultMetadataDto {
 
   @ApiPropertyOptional({ description: 'Number of refinement retries consumed' })
   refinementCyclesUsed?: number;
+
+  @ApiPropertyOptional({
+    description: 'Agent run trace identifier for debug and replay endpoints',
+  })
+  traceRunId?: string;
 }
 
 export class DesignResultDto {
   @ApiProperty({ description: 'UUID of the created design' })
-  designId: string;
+  designId!: string;
 
   @ApiProperty({ description: 'Name of the created design' })
-  name: string;
+  name!: string;
 
   @ApiProperty({ description: 'Success message' })
-  message: string;
+  message!: string;
 
   @ApiPropertyOptional({ description: 'Agent reasoning steps', type: [String] })
   reasoning?: string[];
@@ -107,7 +112,7 @@ export class DesignResultDto {
     description: 'Metadata about the generation process',
     type: DesignResultMetadataDto,
   })
-  metadata: DesignResultMetadataDto;
+  metadata!: DesignResultMetadataDto;
 
   @ApiPropertyOptional({
     description: 'Detailed validation and expectation coverage information',
@@ -118,11 +123,11 @@ export class DesignResultDto {
 
 export class DesignErrorDto {
   @ApiProperty({ description: 'Error message' })
-  error: string;
+  error!: string;
 
   @ApiProperty({ description: 'Detailed error information' })
-  details: string;
+  details!: string;
 
   @ApiProperty({ description: 'HTTP status code' })
-  statusCode: number;
+  statusCode!: number;
 }

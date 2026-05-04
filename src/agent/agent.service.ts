@@ -8,6 +8,7 @@ import {
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { DesignToolsService } from './tools/design-tools.service';
+import { AgentToolReplayStep, AgentTraceService } from './agent-trace.service';
 import { GenerateDesignDto } from './dto/generate-design.dto';
 import { DesignResultDto } from './dto/design-result.dto';
 import { RagService } from '../llm/rag.service';
@@ -73,33 +74,33 @@ export class AgentService {
   private agentExecutor: AgentExecutor | null = null;
   private initializationError: Error | null = null;
   private readonly provider: string;
+  private readonly modelName: string;
 
   constructor(
     private readonly designToolsService: DesignToolsService,
     private readonly ragService: RagService,
+    private readonly traceService: AgentTraceService,
   ) {
     // Determine which LLM provider to use
     this.provider = process.env.LLM_PROVIDER || 'ollama';
 
     // Initialize LLM based on provider
     if (this.provider === 'openai') {
+      this.modelName = process.env.OPENAI_MODEL || 'gpt-4o-mini';
       this.llm = new ChatOpenAI({
-        modelName: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        modelName: this.modelName,
         temperature: 0.7,
         openAIApiKey: process.env.OPENAI_API_KEY,
       });
-      this.logger.log(
-        `Agent initialized with OpenAI model: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}`,
-      );
+      this.logger.log(`Agent initialized with OpenAI model: ${this.modelName}`);
     } else {
+      this.modelName = process.env.OLLAMA_MODEL || 'mistral-nemo:latest';
       this.llm = new ChatOllama({
         baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434',
-        model: process.env.OLLAMA_MODEL || 'mistral-nemo:latest',
+        model: this.modelName,
         temperature: 0.7,
       });
-      this.logger.log(
-        `Agent initialized with Ollama model: ${process.env.OLLAMA_MODEL || 'mistral-nemo:latest'}`,
-      );
+      this.logger.log(`Agent initialized with Ollama model: ${this.modelName}`);
     }
 
     this.initializeAgent();
@@ -980,11 +981,23 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
   async generateDesign(
     dto: GenerateDesignDto,
     accessToken?: string,
+    userId?: string,
   ): Promise<DesignResultDto> {
     const startTime = Date.now();
     this.logger.log(`Generating design for query: ${dto.query}`);
 
+    const traceRunId = this.traceService.startRun({
+      userId,
+      query: dto.query,
+      provider: this.provider,
+      model: this.modelName,
+    });
+    this.traceService.appendStage(traceRunId, 'request_received', {
+      queryLength: dto.query.length,
+    });
+
     if (!accessToken) {
+      this.traceService.failRun(traceRunId, 'Access token is required');
       throw new Error('Access token is required for design generation');
     }
 
@@ -1004,12 +1017,32 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
       );
       const totalAttempts = validationEnabled ? maxRefinementCycles + 1 : 1;
 
+      this.traceService.appendStage(traceRunId, 'runtime_config_resolved', {
+        validationEnabled,
+        validationThreshold,
+        maxRefinementCycles,
+        maxDesignerIterations,
+        totalAttempts,
+      });
+
       const ragContext =
         dto.options?.enableRagContext === false
           ? ''
           : await this.getRagContext(dto.query);
 
+      this.traceService.appendStage(traceRunId, 'rag_context_loaded', {
+        enabled: dto.options?.enableRagContext !== false,
+        contextLength: ragContext.length,
+      });
+
       let blueprint = await this.generateBlueprint(dto.query, ragContext);
+      this.traceService.appendStage(traceRunId, 'blueprint_generated', {
+        actors: blueprint.actors.length,
+        functionalRequirements: blueprint.functionalRequirements.length,
+        apis: blueprint.apis.length,
+        asyncWorkflows: blueprint.asyncWorkflows.length,
+      });
+
       let refinementDirectives: string[] = [];
       let bestAttempt: MultiAgentAttempt | null = null;
       const attemptHistory: Array<{
@@ -1022,6 +1055,12 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
       }> = [];
 
       for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+        this.traceService.appendStage(traceRunId, 'attempt_started', {
+          attempt,
+          totalAttempts,
+          directivesCount: refinementDirectives.length,
+        });
+
         const planningSummary = this.buildPlanningSummary(blueprint);
 
         // DesignerAgent
@@ -1059,6 +1098,14 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
           ? result.intermediateSteps
           : [];
 
+        const replaySteps = this.extractToolReplaySteps(intermediateSteps);
+        this.traceService.appendToolReplay(traceRunId, replaySteps);
+        this.traceService.appendStage(traceRunId, 'designer_completed', {
+          attempt,
+          toolCalls: replaySteps.length,
+          outputPreview: String(result.output).slice(0, 400),
+        });
+
         const designId =
           this.extractDesignIdFromToolResults(intermediateSteps) ||
           this.extractDesignId(String(result.output));
@@ -1088,6 +1135,14 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
               gaps: [],
               recommendations: ['Validation loop disabled by request options'],
             };
+
+        this.traceService.appendStage(traceRunId, 'validation_completed', {
+          attempt,
+          score: validation.score,
+          passed: validation.passed,
+          missingRequirementsCount: validation.missingRequirements.length,
+          gapCount: validation.gaps.length,
+        });
 
         const reasoning = this.extractReasoningSteps(intermediateSteps);
 
@@ -1122,6 +1177,11 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
           !validationEnabled || validation.score >= validationThreshold;
 
         if (thresholdMet || attempt === totalAttempts) {
+          this.traceService.appendStage(traceRunId, 'attempt_selected', {
+            attempt,
+            thresholdMet,
+            finalAttempt: attempt === totalAttempts,
+          });
           break;
         }
 
@@ -1132,11 +1192,22 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
           validation,
         );
 
+        this.traceService.appendStage(traceRunId, 'refinement_generated', {
+          attempt,
+          directivesCount: refinementDirectives.length,
+        });
+
         blueprint = await this.applyRefinementToBlueprint(
           dto.query,
           blueprint,
           refinementDirectives,
         );
+
+        this.traceService.appendStage(traceRunId, 'blueprint_refined', {
+          attempt,
+          actors: blueprint.actors.length,
+          functionalRequirements: blueprint.functionalRequirements.length,
+        });
       }
 
       if (!bestAttempt) {
@@ -1160,6 +1231,7 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
           componentsCount: this.extractComponentCount(bestAttempt.output),
           connectionsCount: this.extractConnectionCount(bestAttempt.output),
           processingTimeMs: Date.now() - startTime,
+          traceRunId,
           templateUsed: reasoning.some(
             (step) =>
               step.includes('template') || step.includes('existing design'),
@@ -1198,9 +1270,16 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
       };
 
       await this.designToolsService.attachDesignContext(accessToken, designId, {
+        traceRunId,
         adr: adrBlob,
         architectureBlueprint: selectedBlueprint,
         validationReport: validation,
+      });
+
+      this.traceService.completeRun(traceRunId, {
+        designId,
+        validationScore: validation.score,
+        attempts: attemptHistory.length,
       });
 
       this.logger.log(`Design generated successfully: ${designId}`);
@@ -1210,6 +1289,7 @@ Your job: Call tool → Return ID → DONE. User sees design in UI.`,
         error instanceof Error ? error.message : 'Unknown error';
       const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(`Error generating design: ${errorMessage}`, errorStack);
+      this.traceService.failRun(traceRunId, errorMessage);
       throw error;
     }
   }
@@ -1705,6 +1785,35 @@ Rules:
     }
 
     return steps;
+  }
+
+  private extractToolReplaySteps(
+    intermediateSteps: unknown[],
+  ): AgentToolReplayStep[] {
+    const replaySteps: AgentToolReplayStep[] = [];
+
+    for (const step of intermediateSteps) {
+      const stepObj = step as Record<string, unknown>;
+      const action = stepObj.action as Record<string, unknown> | undefined;
+
+      if (!action || typeof action.tool !== 'string') {
+        continue;
+      }
+
+      const toolInputRaw = action.toolInput;
+      const toolInput =
+        toolInputRaw && typeof toolInputRaw === 'object'
+          ? (toolInputRaw as Record<string, unknown>)
+          : {};
+
+      replaySteps.push({
+        tool: action.tool,
+        toolInput,
+        observation: stepObj.observation,
+      });
+    }
+
+    return replaySteps;
   }
 
   /**

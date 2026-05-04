@@ -156,20 +156,20 @@ src/
 
 ## Environment Variables Reference
 
-| Variable                | Description                 | Example                                    |
-| ----------------------- | --------------------------- | ------------------------------------------ |
-| `DESIGN_SERVICE_URL`    | Design service API URL      | `http://localhost:3000`                    |
-| `OLLAMA_HOST`           | Ollama server URL           | `http://ubuntu-server:11434`               |
-| `OLLAMA_MODEL`          | LLM model name              | `mistral-nemo:latest`                      |
-| `QDRANT_URL`            | Qdrant vector store URL     | `http://localhost:6333`                    |
-| `SUPABASE_JWT_AUDIENCE` | Supabase JWT audience claim | `authenticated`                            |
-| `SUPABASE_JWT_ISSUER`   | Supabase JWT issuer URL     | `https://your-project.supabase.co/auth/v1` |
-| `INGESTION_EMBEDDING_PROVIDER` | Embedding backend for PDF ingestion (`ollama` or `openai`) | `openai` |
-| `INGESTION_OPENAI_EMBEDDING_MODEL` | OpenAI embedding model used when provider is `openai` | `text-embedding-3-large` |
-| `INGESTION_OLLAMA_EMBEDDING_MODEL` | Ollama embedding model used when provider is `ollama` | `mxbai-embed-large` |
-| `INGESTION_EMBEDDING_TIMEOUT_MS` | Batch embedding timeout (ms) | `900000` |
-| `INGESTION_CHUNK_EMBEDDING_TIMEOUT_MS` | Per-chunk embedding timeout (ms) | `330000` |
-| `INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES` | Abort threshold for sequential chunk failures | `2` |
+| Variable                                       | Description                                                | Example                                    |
+| ---------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------ |
+| `DESIGN_SERVICE_URL`                           | Design service API URL                                     | `http://localhost:3000`                    |
+| `OLLAMA_HOST`                                  | Ollama server URL                                          | `http://ubuntu-server:11434`               |
+| `OLLAMA_MODEL`                                 | LLM model name                                             | `mistral-nemo:latest`                      |
+| `QDRANT_URL`                                   | Qdrant vector store URL                                    | `http://localhost:6333`                    |
+| `SUPABASE_JWT_AUDIENCE`                        | Supabase JWT audience claim                                | `authenticated`                            |
+| `SUPABASE_JWT_ISSUER`                          | Supabase JWT issuer URL                                    | `https://your-project.supabase.co/auth/v1` |
+| `INGESTION_EMBEDDING_PROVIDER`                 | Embedding backend for PDF ingestion (`ollama` or `openai`) | `openai`                                   |
+| `INGESTION_OPENAI_EMBEDDING_MODEL`             | OpenAI embedding model used when provider is `openai`      | `text-embedding-3-large`                   |
+| `INGESTION_OLLAMA_EMBEDDING_MODEL`             | Ollama embedding model used when provider is `ollama`      | `mxbai-embed-large`                        |
+| `INGESTION_EMBEDDING_TIMEOUT_MS`               | Batch embedding timeout (ms)                               | `900000`                                   |
+| `INGESTION_CHUNK_EMBEDDING_TIMEOUT_MS`         | Per-chunk embedding timeout (ms)                           | `330000`                                   |
+| `INGESTION_MAX_CONSECUTIVE_EMBEDDING_FAILURES` | Abort threshold for sequential chunk failures              | `2`                                        |
 
 ### Toggle ingestion embedding provider
 
@@ -332,6 +332,25 @@ Content-Type: application/json
 ```bash
 GET /agent/health
 ```
+
+#### Agent Debug Traces
+
+```bash
+GET /agent/debug/runs?limit=20
+GET /agent/debug/runs/:runId
+```
+
+- `GET /agent/debug/runs` returns recent run summaries for the authenticated user.
+- `GET /agent/debug/runs/:runId` returns full stage timeline and tool replay payloads.
+
+#### Agent Eval Harness
+
+```bash
+EVAL_AUTH_TOKEN=<supabase_jwt> npm run eval:agent
+```
+
+- Dataset: `scripts/agent-eval.dataset.json`
+- Script: `scripts/agent-eval.ts`
 
 ### Documentation
 

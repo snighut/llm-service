@@ -3,6 +3,8 @@ import {
   Post,
   Body,
   Get,
+  Param,
+  Query,
   HttpStatus,
   HttpException,
   Logger,
@@ -16,18 +18,36 @@ import {
   ApiResponse,
   ApiBody,
   ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { AgentService } from './agent.service';
+import { AgentTraceService } from './agent-trace.service';
 import { GenerateDesignDto } from './dto/generate-design.dto';
 import { DesignResultDto, DesignErrorDto } from './dto/design-result.dto';
+import {
+  AgentDebugRunDetailResponseDto,
+  AgentDebugRunListResponseDto,
+} from './dto/agent-debug.dto';
+
+interface JwtPayloadLike {
+  sub?: unknown;
+}
+
+interface RequestWithUser extends Request {
+  user?: string | JwtPayloadLike;
+}
 
 @ApiTags('agent')
 @Controller('agent')
 export class AgentController {
   private readonly logger = new Logger(AgentController.name);
 
-  constructor(private readonly agentService: AgentService) {}
+  constructor(
+    private readonly agentService: AgentService,
+    private readonly traceService: AgentTraceService,
+  ) {}
 
   /**
    * Generate a system design from natural language query
@@ -62,7 +82,7 @@ export class AgentController {
   })
   async generateDesign(
     @Body() dto: GenerateDesignDto,
-    @Req() request: Request,
+    @Req() request: RequestWithUser,
   ): Promise<DesignResultDto> {
     try {
       this.logger.log(`Received design generation request: ${dto.query}`);
@@ -95,9 +115,14 @@ export class AgentController {
       const accessToken = authHeader?.startsWith('Bearer ')
         ? authHeader.substring(7)
         : authHeader;
+      const userId = this.extractUserId(request.user);
 
       // Generate design using agent with user's token
-      const result = await this.agentService.generateDesign(dto, accessToken);
+      const result = await this.agentService.generateDesign(
+        dto,
+        accessToken,
+        userId,
+      );
 
       this.logger.log(`Design generated successfully: ${result.designId}`);
       return result;
@@ -124,6 +149,96 @@ export class AgentController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Get('debug/runs')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'List recent agent runs for authenticated user',
+    description:
+      'Returns trace summaries including status, duration, and selected result metadata.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Maximum number of runs to return (1-100). Defaults to 20.',
+    example: 20,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of recent trace summaries',
+    type: AgentDebugRunListResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  listDebugRuns(
+    @Req() request: RequestWithUser,
+    @Query('limit') limitRaw?: string,
+  ) {
+    const userId = this.extractUserId(request.user);
+    const parsedLimit = Number(limitRaw);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 20;
+    const runs = this.traceService.listRuns(userId, limit);
+
+    return {
+      runs,
+      count: runs.length,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('debug/runs/:runId')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Get full agent run trace by runId',
+    description:
+      'Includes stage timeline and tool replay payloads for debugging and replay.',
+  })
+  @ApiParam({
+    name: 'runId',
+    type: String,
+    description:
+      'Trace run id returned from generate-design metadata.traceRunId',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Full trace payload',
+    type: AgentDebugRunDetailResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Run not found' })
+  getDebugRun(@Req() request: RequestWithUser, @Param('runId') runId: string) {
+    const userId = this.extractUserId(request.user);
+    const run = this.traceService.getRun(runId, userId);
+    if (!run) {
+      throw new HttpException(
+        {
+          error: 'Trace run not found',
+          details: `No run found for runId: ${runId}`,
+          statusCode: HttpStatus.NOT_FOUND,
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return {
+      run,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private extractUserId(user?: string | JwtPayloadLike): string | undefined {
+    if (!user || typeof user === 'string') {
+      return undefined;
+    }
+
+    if ('sub' in user && typeof user.sub === 'string' && user.sub.length > 0) {
+      return user.sub;
+    }
+
+    return undefined;
   }
 
   /**
