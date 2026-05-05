@@ -1,0 +1,108 @@
+{
+  "name": "Cloud Drive Reference Rubric (Gemini-inspired)",
+  "description": "Reference rubric for Dropbox/Google Drive style storage and sync systems based on the updated example. Intent-based, not topology-hardcoded.",
+  "intents": [
+    {
+      "key": "sync_client",
+      "description": "Design includes device clients with sync responsibilities",
+      "componentAnyOf": [
+        ["user", "devices"],
+        ["client", "application"],
+        ["sync", "client"]
+      ],
+      "contextAnyOf": [
+        ["chunk"],
+        ["hash"],
+        ["conflict", "resolution"]
+      ]
+    },
+    {
+      "key": "lb_and_gateway_entry",
+      "description": "Design includes both load balancer and API gateway entry path",
+      "componentAnyOf": [
+        ["load", "balancer"],
+        ["api", "gateway"],
+        ["auth", "routing"]
+      ],
+      "connectionAnyOf": [
+        ["request", "path"],
+        ["https"]
+      ]
+    },
+    {
+      "key": "metadata_consistency",
+      "description": "Design includes metadata service with strong consistency and SQL sharding strategy",
+      "componentAnyOf": [
+        ["metadata", "service"],
+        ["control", "plane"]
+      ],
+      "contextAnyOf": [
+        ["strong", "consistent"],
+        ["sharded", "postgres"],
+        ["sharded", "mysql"],
+        ["postgres"]
+      ]
+    },
+    {
+      "key": "chunk_service",
+      "description": "Design includes block/chunk service with deduplication/encryption processes",
+      "componentAnyOf": [
+        ["block", "service"],
+        ["chunk", "service"],
+        ["data", "plane"]
+      ],
+      "contextAnyOf": [
+        ["deduplication"],
+        ["encryption"],
+        ["4mb", "block"]
+      ]
+    },
+    {
+      "key": "object_storage",
+      "description": "Design includes object storage with durability and erasure coding reliability",
+      "componentAnyOf": [
+        ["object", "storage"],
+        ["blob", "storage"],
+        ["s3"],
+        ["gcs"]
+      ],
+      "contextAnyOf": [
+        ["erasure", "coding"],
+        ["region"],
+        ["durability"]
+      ]
+    },
+    {
+      "key": "sync_notifications",
+      "description": "Design includes notifier push mechanism for instant device sync",
+      "componentAnyOf": [
+        ["notifier", "service"],
+        ["notification", "service"],
+        ["websocket", "long", "polling"]
+      ],
+      "connectionAnyOf": [
+        ["publish", "subscribe"],
+        ["update", "push"],
+        ["websocket"]
+      ]
+    },
+    {
+      "key": "chunk_to_storage_flow",
+      "description": "Design includes multi-part block upload flow to object storage",
+      "connectionAnyOf": [
+        ["block", "upload"],
+        ["multi-part", "upload"],
+        ["block", "service", "object", "storage"]
+      ]
+    },
+    {
+      "key": "explicit_requirements",
+      "description": "Design captures the top-level non-functional requirements",
+      "contextAnyOf": [
+        ["high", "durability"],
+        ["strong", "consistency"],
+        ["efficient", "sync"]
+      ]
+    }
+  ]
+}

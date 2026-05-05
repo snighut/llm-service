@@ -3,18 +3,48 @@
     "name": "E-commerce microservices baseline",
     "query": "Design a microservices architecture for an e-commerce platform with cart, catalog, orders, payments, and notifications.",
     "minValidationScore": 75,
-    "maxDurationMs": 180000
+    "maxDurationMs": 180000,
+    "rubricPath": "./scripts/rubrics/ecommerce.gemini-reference.json",
+    "rubricMinCoverage": 75
   },
   {
-    "name": "Event-driven order processing",
-    "query": "Design an event-driven architecture for high-volume order processing with retries and dead letter queue.",
-    "minValidationScore": 75,
-    "maxDurationMs": 180000
+    "name": "URL shortener reference coverage",
+    "query": "Design a URL Shortening service like TinyURL. Focus on: unique short ID generation, collision avoidance, malicious URL prevention, abuse rate limiting, link expiration/deletion, analytics logging, cache strategy (Redis/CDN), and hot key handling.",
+    "minValidationScore": 80,
+    "maxDurationMs": 180000,
+    "rubricPath": "./scripts/rubrics/url-shortener.gemini-reference.json",
+    "rubricMinCoverage": 75
   },
   {
-    "name": "Realtime analytics ingestion",
-    "query": "Design a system for realtime analytics ingestion and dashboard queries with low latency reads.",
-    "minValidationScore": 70,
-    "maxDurationMs": 180000
+    "name": "Instagram reference coverage",
+    "query": "Design a system design for Instagram. Include feed generation strategy, media upload and processing pipeline, timeline caching, metadata storage, object storage, CDN edge delivery, and direct client media retrieval.",
+    "minValidationScore": 80,
+    "maxDurationMs": 180000,
+    "rubricPath": "./scripts/rubrics/instagram.gemini-reference.json",
+    "rubricMinCoverage": 75
+  },
+  {
+    "name": "Cloud drive reference coverage",
+    "query": "Design a system like Dropbox or Google Drive with sync clients, delta/chunk-based resumable upload, strongly consistent metadata service, block/chunk service, object storage durability strategy, and real-time device sync notifications.",
+    "minValidationScore": 80,
+    "maxDurationMs": 180000,
+    "rubricPath": "./scripts/rubrics/cloud-drive.gemini-reference.json",
+    "rubricMinCoverage": 75
+  },
+  {
+    "name": "Twitter reference coverage",
+    "query": "Design Twitter/X for hundreds of millions of users with tweet ingest, Snowflake-like ID generation, NoSQL timeline storage, Redis timeline cache, hybrid fan-out (push for regular users and pull for celebrities), and async feed distribution via Kafka-like pub-sub.",
+    "minValidationScore": 80,
+    "maxDurationMs": 180000,
+    "rubricPath": "./scripts/rubrics/twitter.gemini-reference.json",
+    "rubricMinCoverage": 75
+  },
+  {
+    "name": "Rate limiter reference coverage",
+    "query": "Design a distributed API rate limiter with external clients, load balancer, multiple limiter nodes, centralized Redis state with atomic operations, explicit allow/block decision path including HTTP 429 handling, and admin rule synchronization.",
+    "minValidationScore": 80,
+    "maxDurationMs": 180000,
+    "rubricPath": "./scripts/rubrics/rate-limiter.gemini-reference.json",
+    "rubricMinCoverage": 75
   }
 ]

@@ -1,0 +1,93 @@
+{
+  "name": "Twitter/X Reference Rubric (Gemini-inspired)",
+  "description": "Reference rubric for Twitter/X-scale designs (hundreds of millions of users). Intent-based and implementation-flexible.",
+  "intents": [
+    {
+      "key": "tweet_ingest_service",
+      "description": "Includes a tweet ingest/write service with ID generation strategy",
+      "componentAnyOf": [
+        ["tweet", "service"],
+        ["post", "service"],
+        ["write", "service"]
+      ],
+      "contextAnyOf": [
+        ["snowflake"],
+        ["id", "generation"],
+        ["validation"]
+      ]
+    },
+    {
+      "key": "nosql_timeline_store",
+      "description": "Includes NoSQL store optimized for large-scale timeline/user partitioning",
+      "componentAnyOf": [
+        ["cassandra"],
+        ["nosql"],
+        ["wide-column"],
+        ["timeline", "store"]
+      ],
+      "contextAnyOf": [
+        ["shard"],
+        ["partition"],
+        ["replication"]
+      ]
+    },
+    {
+      "key": "timeline_cache",
+      "description": "Includes timeline cache for low-latency reads",
+      "componentAnyOf": [
+        ["redis"],
+        ["timeline", "cache"],
+        ["cache"]
+      ],
+      "contextAnyOf": [
+        ["lru"],
+        ["max", "entries"],
+        ["list"]
+      ]
+    },
+    {
+      "key": "fanout_hybrid",
+      "description": "Includes fan-out architecture with hybrid push/pull behavior",
+      "componentAnyOf": [
+        ["fan-out"],
+        ["fanout"],
+        ["feed", "service"],
+        ["timeline", "service"]
+      ],
+      "contextAnyOf": [
+        ["hybrid", "push", "pull"],
+        ["fan-out", "write"],
+        ["fanout", "load"]
+      ]
+    },
+    {
+      "key": "async_distribution",
+      "description": "Includes asynchronous distribution pipeline for timeline precompute",
+      "connectionAnyOf": [
+        ["publish", "subscribe"],
+        ["kafka"],
+        ["topic"],
+        ["pre-compute", "feed"]
+      ]
+    },
+    {
+      "key": "reliability_latency",
+      "description": "Includes protocol, retry, and timeout details for persistence path",
+      "connectionAnyOf": [
+        ["grpc"],
+        ["retry"],
+        ["timeout"]
+      ]
+    },
+    {
+      "key": "scale_context",
+      "description": "Captures scale objective in design context/description",
+      "contextAnyOf": [
+        ["600m"],
+        ["millions", "users"],
+        ["high-scale"],
+        ["high", "scale"]
+      ]
+    }
+  ]
+}

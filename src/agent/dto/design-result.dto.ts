@@ -61,6 +61,18 @@ export class DesignResultMetadataDto {
   @ApiProperty({ description: 'Number of connections created' })
   connectionsCount!: number;
 
+  @ApiPropertyOptional({
+    description: 'Number of database components in the final promoted design',
+  })
+  databaseCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Database component names detected in the final promoted design',
+    type: [String],
+  })
+  databaseNames?: string[];
+
   @ApiProperty({ description: 'Processing time in milliseconds' })
   processingTimeMs!: number;
 

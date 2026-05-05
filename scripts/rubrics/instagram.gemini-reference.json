@@ -1,0 +1,86 @@
+{
+  "name": "Instagram Reference Rubric (Gemini-inspired)",
+  "description": "Reference rubric for Instagram-like system designs. Measures intent coverage without enforcing exact component names.",
+  "intents": [
+    {
+      "key": "client_entry",
+      "description": "Design includes mobile/web client and gateway/load balancer entry",
+      "componentAnyOf": [
+        ["mobile", "client"],
+        ["api gateway"],
+        ["load balancer"],
+        ["gateway"]
+      ]
+    },
+    {
+      "key": "feed_generation_hybrid",
+      "description": "Design includes feed generation with hybrid fanout behavior",
+      "componentAnyOf": [["feed", "service"]],
+      "contextAnyOf": [
+        ["hybrid"],
+        ["fan-out"],
+        ["fanout"]
+      ]
+    },
+    {
+      "key": "media_pipeline",
+      "description": "Design includes media upload/processing flow",
+      "componentAnyOf": [
+        ["media", "service"],
+        ["upload"],
+        ["transcoding"],
+        ["compression"]
+      ]
+    },
+    {
+      "key": "timeline_cache",
+      "description": "Design includes a fast cache for timeline/feed reads",
+      "componentAnyOf": [
+        ["redis"],
+        ["cache"]
+      ],
+      "connectionAnyOf": [
+        ["cache-aside"],
+        ["cache aside"],
+        ["feed", "cache"]
+      ]
+    },
+    {
+      "key": "metadata_store",
+      "description": "Design includes metadata storage with scale strategy",
+      "componentAnyOf": [
+        ["metadata", "db"],
+        ["postgres"],
+        ["database"]
+      ],
+      "contextAnyOf": [
+        ["shard"],
+        ["partition"]
+      ]
+    },
+    {
+      "key": "object_storage_and_cdn",
+      "description": "Design includes blob/object storage and CDN edge delivery",
+      "componentAnyOf": [
+        ["object", "storage"],
+        ["blob"],
+        ["s3"],
+        ["cdn"]
+      ],
+      "connectionAnyOf": [
+        ["edge"],
+        ["pull-through"],
+        ["direct", "cdn"]
+      ]
+    },
+    {
+      "key": "direct_media_fetch",
+      "description": "Client can fetch media directly from CDN",
+      "connectionAnyOf": [
+        ["client", "cdn"],
+        ["mobile", "cdn"],
+        ["direct", "media", "fetch"]
+      ]
+    }
+  ]
+}

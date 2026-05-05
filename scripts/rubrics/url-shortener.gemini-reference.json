@@ -1,0 +1,80 @@
+{
+  "name": "URL Shortener Reference Rubric (Gemini-inspired)",
+  "description": "Reference-only rubric for TinyURL-style architecture quality. Evaluates intent coverage, not exact component names.",
+  "intents": [
+    {
+      "key": "traffic_distribution",
+      "description": "Architecture should include explicit traffic distribution or edge entry strategy",
+      "componentAnyOf": [
+        ["load balancer"],
+        ["api gateway"],
+        ["gateway"]
+      ]
+    },
+    {
+      "key": "id_generation_collision",
+      "description": "Architecture should include explicit short ID generation and collision handling strategy",
+      "componentAnyOf": [
+        ["key generation", "kgs"],
+        ["base62"],
+        ["id generation"]
+      ],
+      "contextAnyOf": [
+        ["collision"],
+        ["unique index"],
+        ["retry"]
+      ]
+    },
+    {
+      "key": "hot_path_cache",
+      "description": "Architecture should include cache for hot read path",
+      "componentAnyOf": [
+        ["redis"],
+        ["cache"]
+      ]
+    },
+    {
+      "key": "durable_storage",
+      "description": "Architecture should include durable mapping storage",
+      "componentAnyOf": [
+        ["database"],
+        ["nosql"],
+        ["mongo"],
+        ["cassandra"]
+      ]
+    },
+    {
+      "key": "expiration_cleanup",
+      "description": "Architecture should include expiration/deletion lifecycle",
+      "componentAnyOf": [
+        ["cleanup"],
+        ["expiration"],
+        ["ttl"],
+        ["cron"]
+      ]
+    },
+    {
+      "key": "abuse_protection",
+      "description": "Architecture should include abuse protection (rate limiting or reputation checks)",
+      "componentAnyOf": [
+        ["rate limiting"],
+        ["throttle"],
+        ["reputation"],
+        ["filter"]
+      ]
+    },
+    {
+      "key": "analytics_logging",
+      "description": "Architecture should include analytics/logging pipeline",
+      "componentAnyOf": [
+        ["analytics"],
+        ["log"]
+      ],
+      "connectionAnyOf": [
+        ["queue"],
+        ["asynchronous"],
+        ["event"]
+      ]
+    }
+  ]
+}

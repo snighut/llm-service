@@ -1,0 +1,100 @@
+{
+  "name": "E-commerce Microservices Reference Rubric (Gemini-inspired)",
+  "description": "Reference rubric for e-commerce microservices with catalog, cart, orders, payments, notifications, and event-driven orchestration.",
+  "intents": [
+    {
+      "key": "gateway_entry",
+      "description": "Design includes API gateway as ingress for client requests",
+      "componentAnyOf": [
+        ["api", "gateway"],
+        ["gateway"]
+      ],
+      "connectionAnyOf": [
+        ["browse"],
+        ["search"],
+        ["http"],
+        ["https"]
+      ]
+    },
+    {
+      "key": "core_domain_services",
+      "description": "Design includes catalog, cart, and order domain services",
+      "componentAnyOf": [
+        ["catalog", "service"],
+        ["cart", "service"],
+        ["order", "service"]
+      ]
+    },
+    {
+      "key": "domain_datastores",
+      "description": "Design includes datastore strategy across services",
+      "contextAnyOf": [
+        ["mongodb"],
+        ["redis"],
+        ["postgres"],
+        ["database"]
+      ]
+    },
+    {
+      "key": "event_bus_integration",
+      "description": "Design includes message broker/event bus for async communication",
+      "componentAnyOf": [
+        ["event", "bus"],
+        ["message", "broker"],
+        ["kafka"],
+        ["rabbitmq"]
+      ],
+      "connectionAnyOf": [
+        ["publish", "subscribe"],
+        ["sync", "events"],
+        ["amqp"]
+      ]
+    },
+    {
+      "key": "checkout_flow",
+      "description": "Design includes cart-to-order checkout interaction",
+      "connectionAnyOf": [
+        ["cart", "order"],
+        ["checkout"],
+        ["fetch"]
+      ]
+    },
+    {
+      "key": "search_capability",
+      "description": "Design includes search indexing/capability",
+      "componentAnyOf": [
+        ["elasticsearch"],
+        ["search", "engine"],
+        ["search"]
+      ],
+      "contextAnyOf": [
+        ["full-text", "search"],
+        ["browse", "products"]
+      ]
+    },
+    {
+      "key": "distributed_transaction",
+      "description": "Design includes saga/distributed transaction orchestration",
+      "componentAnyOf": [
+        ["saga", "orchestrator"],
+        ["orchestrator"]
+      ],
+      "connectionAnyOf": [
+        ["orchestration", "flow"],
+        ["saga", "pattern"],
+        ["control", "flow"]
+      ]
+    },
+    {
+      "key": "payment_notification_integrations",
+      "description": "Design references payment and notification integration concerns",
+      "contextAnyOf": [
+        ["stripe"],
+        ["paypal"],
+        ["sendgrid"],
+        ["payment"],
+        ["notification"]
+      ]
+    }
+  ]
+}

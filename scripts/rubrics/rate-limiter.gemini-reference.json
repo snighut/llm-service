@@ -1,0 +1,92 @@
+{
+  "name": "Distributed API Rate Limiter Reference Rubric (Gemini-inspired)",
+  "description": "Reference rubric for distributed rate limiter architectures with centralized state, rule synchronization, and explicit allow/block decision paths.",
+  "intents": [
+    {
+      "key": "client_ingress",
+      "description": "Design includes external clients and ingress entry path",
+      "componentAnyOf": [
+        ["client"],
+        ["web", "client"],
+        ["mobile", "client"]
+      ],
+      "connectionAnyOf": [
+        ["external", "request"],
+        ["https"],
+        ["ingress"]
+      ]
+    },
+    {
+      "key": "load_balancer_distribution",
+      "description": "Design includes load balancer distributing traffic to rate limiter tier",
+      "componentAnyOf": [
+        ["load", "balancer"],
+        ["lb"]
+      ],
+      "connectionAnyOf": [
+        ["distribute"],
+        ["rate", "limiter"],
+        ["tier"]
+      ]
+    },
+    {
+      "key": "rate_limiter_tier",
+      "description": "Design includes multiple rate limiter instances/nodes",
+      "componentAnyOf": [
+        ["rate", "limiter", "node"],
+        ["rate", "limiter", "instance"],
+        ["rate", "limiter", "tier"]
+      ]
+    },
+    {
+      "key": "central_state_store",
+      "description": "Design includes centralized distributed cache/state store for counters",
+      "componentAnyOf": [
+        ["redis"],
+        ["distributed", "cache"],
+        ["central", "cache"]
+      ],
+      "contextAnyOf": [
+        ["atomic"],
+        ["lua"],
+        ["incr"],
+        ["counter"]
+      ]
+    },
+    {
+      "key": "allow_block_paths",
+      "description": "Design includes both allowed and blocked request decision flows",
+      "connectionAnyOf": [
+        ["allowed", "request"],
+        ["http", "429"],
+        ["too", "many", "requests"],
+        ["retry"]
+      ]
+    },
+    {
+      "key": "rule_management_sync",
+      "description": "Design includes rule management and rule propagation to limiter state",
+      "componentAnyOf": [
+        ["rules", "database"],
+        ["admin"],
+        ["rule", "management"]
+      ],
+      "connectionAnyOf": [
+        ["sync", "rules"],
+        ["config", "push"],
+        ["publish", "subscribe"]
+      ]
+    },
+    {
+      "key": "algorithm_explicit",
+      "description": "Design documents limiter algorithm logic or trade-offs",
+      "contextAnyOf": [
+        ["token", "bucket"],
+        ["leaky", "bucket"],
+        ["sliding", "window"],
+        ["counter", "limit"],
+        ["allow", "else", "block"]
+      ]
+    }
+  ]
+}

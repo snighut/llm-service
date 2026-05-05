@@ -55,12 +55,25 @@ interface CreateDesignItem {
   context?: unknown;
 }
 
+interface EnrichedItemContext {
+  purpose: string;
+  limitations: string;
+  alternatives: string;
+  scalingPlan: string;
+}
+
 interface CreateDesignConnection {
   from: string;
   to: string;
   label?: string;
   connectionType?: string;
   context?: unknown;
+}
+
+interface ExistingDesignConnectionSnapshot {
+  from: string;
+  to: string;
+  label?: string;
 }
 
 interface CreateDesignGroup {
@@ -78,6 +91,16 @@ interface CreateDesignInput {
   items: CreateDesignItem[];
   connections?: CreateDesignConnection[];
   designGroups?: CreateDesignGroup[];
+}
+
+interface UpdateDesignInput extends CreateDesignInput {
+  designId: string;
+}
+
+interface MutationSessionGuard {
+  hasMutation: boolean;
+  designId?: string;
+  operation?: 'create' | 'update';
 }
 
 interface LayoutItem {
@@ -283,7 +306,10 @@ export class DesignToolsService {
   /**
    * Tool 3: Create a new system design with items and connections
    */
-  getCreateSystemDesignTool(authToken: string): DynamicStructuredTool {
+  getCreateSystemDesignTool(
+    authToken: string,
+    guard?: MutationSessionGuard,
+  ): DynamicStructuredTool {
     return new DynamicStructuredTool({
       name: 'create_system_design',
       description:
@@ -421,54 +447,63 @@ export class DesignToolsService {
       func: async (input: CreateDesignInput) => {
         const { name, description, items, connections, designGroups } = input;
         try {
+          if (guard?.hasMutation && guard.designId) {
+            this.logger.warn(
+              `Skipping duplicate create_system_design call in same attempt, reusing designId: ${guard.designId}`,
+            );
+            return JSON.stringify({
+              success: true,
+              designId: guard.designId,
+              reused: true,
+              operation: guard.operation,
+              message:
+                'Design mutation already executed in this attempt. Reusing previously mutated designId.',
+            });
+          }
+
           const connectionsArray = connections || [];
+          const normalized = this.normalizeComponentNamesByType(
+            items,
+            connectionsArray,
+          );
           this.logger.log(
-            `Creating design: ${String(name)} with ${items.length} items`,
+            `Creating design: ${String(name)} with ${normalized.items.length} items`,
           );
 
           // Auto-generate layout if positions not provided
-          const itemsWithLayout: LayoutItem[] = this.generateLayout(items);
+          const itemsWithLayout: LayoutItem[] = this.generateLayout(
+            normalized.items,
+          );
 
-          // Transform connections to match design-service schema
-          const formattedConnections = connectionsArray.map((conn, index) => ({
-            name: String(conn.label || 'Connection'),
-            connectionType: conn.connectionType || undefined,
-            from: { name: String(conn.from), type: 'DesignItem' },
-            to: { name: String(conn.to), type: 'DesignItem' },
-            fromPoint: this.getConnectionPoint(index, 'from'),
-            toPoint: this.getConnectionPoint(index, 'to'),
-            uidata: this.generateConnectionUIData(
-              String(conn.label || 'Connection'),
-              conn.connectionType,
-            ),
-            context: conn.context,
-          }));
+          const formattedConnections = this.buildFormattedConnections(
+            normalized.connections,
+            itemsWithLayout,
+          );
+
+          const persistedItemsWithLayout = this.pruneOrphanTextBoxItems(
+            itemsWithLayout,
+            formattedConnections,
+          );
 
           // Transform items to match design-service schema with complete uidata
-          const formattedItems = itemsWithLayout.map((item, index) => ({
-            id: this.generateTempId(item.name, index),
-            name: String(item.name),
-            displayName: String(item.displayName || item.name),
-            uidata: this.generateUIData(item, index),
-            context: item.context,
-          }));
-
-          // Format design groups if provided
-          const formattedDesignGroups = (designGroups || []).map(
-            (group, index) => ({
-              id: this.generateGroupId(group.name, index),
-              name: String(group.name),
-              displayName: String(group.displayName || group.name),
-              description: String(group.description || ''),
-              uidata: {
-                x: group.x ?? 100 + index * 200,
-                y: group.y ?? 50,
-                borderColor: group.borderColor || this.getGroupColor(index),
-                borderStyle: 'dashed',
-                borderThickness: 2,
-              },
-              designs: [],
+          const formattedItems = persistedItemsWithLayout.map(
+            (item, index) => ({
+              id: this.generateTempId(item.name, index),
+              name: String(item.name),
+              displayName: String(item.displayName || item.name),
+              uidata: this.generateUIData(item, index),
+              context: this.normalizeItemContext(
+                item.context,
+                item.name,
+                item.type,
+              ),
             }),
+          );
+
+          // Build groups with computed membership and bounding boxes.
+          const formattedDesignGroups = this.buildDesignGroups(
+            designGroups || [],
+            persistedItemsWithLayout,
           );
 
           // Create design using design-service API
@@ -510,6 +545,12 @@ export class DesignToolsService {
             `Successfully created design with ID: ${createdDesign.id}`,
           );
 
+          if (guard) {
+            guard.hasMutation = true;
+            guard.designId = createdDesign.id;
+            guard.operation = 'create';
+          }
+
           return JSON.stringify({
             success: true,
             designId: createdDesign.id,
@@ -544,6 +585,417 @@ export class DesignToolsService {
           return JSON.stringify({
             success: false,
             error: 'Failed to create design',
+            details: fullError,
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool 4: Update an existing system design with refined items and connections
+   */
+  getUpdateSystemDesignTool(
+    authToken: string,
+    guard?: MutationSessionGuard,
+  ): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'update_system_design',
+      description:
+        'Update an existing system architecture design by designId. Use this during refinement loops to improve the SAME design instead of creating a new one.',
+      schema: z.object({
+        designId: z.string().describe('UUID of the existing design to update'),
+        name: z.string().describe('Name of the system design'),
+        description: z
+          .string()
+          .optional()
+          .describe('Detailed description of the architecture'),
+        items: z
+          .array(
+            z.object({
+              name: z
+                .string()
+                .describe(
+                  'Name of the component (e.g., "API Gateway", "User Service")',
+                ),
+              type: z
+                .enum([
+                  'api-gateway',
+                  'microservice',
+                  'database',
+                  'cache',
+                  'message-queue',
+                  'load-balancer',
+                  'storage',
+                  'cdn',
+                  'lambda',
+                  'container',
+                  'kubernetes',
+                  'cloud',
+                  'server',
+                  'user',
+                  'mobile-app',
+                  'web-app',
+                  'firewall',
+                  'monitor',
+                  'text-box',
+                  'service',
+                  'gateway',
+                  'frontend',
+                  'backend',
+                  'queue',
+                  'other',
+                ])
+                .describe(
+                  'Component type: Use specific visual types like api-gateway, microservice, database, cache, message-queue, etc. for professional diagrams. Use text-box ONLY as fallback when no specific type matches. Legacy types (service, gateway, frontend, backend, queue, other) still supported.',
+                ),
+              x: z
+                .number()
+                .optional()
+                .describe(
+                  'X coordinate for positioning (will auto-generate if not provided)',
+                ),
+              y: z
+                .number()
+                .optional()
+                .describe(
+                  'Y coordinate for positioning (will auto-generate if not provided)',
+                ),
+              context: z
+                .any()
+                .optional()
+                .describe('Additional metadata about this component'),
+            }),
+          )
+          .describe('Array of design components/items'),
+        connections: z
+          .array(
+            z.object({
+              from: z.string().describe('Name of the source component'),
+              to: z.string().describe('Name of the target component'),
+              label: z
+                .string()
+                .optional()
+                .describe(
+                  'Connection label (e.g., "REST API", "Message Queue", "gRPC")',
+                ),
+              connectionType: z
+                .string()
+                .optional()
+                .describe(
+                  'Connection type for visual styling: restApi, graphql, grpc, messageQueue, eventBus, databaseConnection, cacheConnection, dataFlow, apiCall, synchronousCall, asynchronousCall, publishSubscribe',
+                ),
+              context: z
+                .any()
+                .optional()
+                .describe('Additional metadata about this connection'),
+            }),
+          )
+          .optional()
+          .describe('Array of connections between items'),
+        designGroups: z
+          .array(
+            z.object({
+              name: z
+                .string()
+                .describe(
+                  'Name of the design group (e.g., "Gateway Layer", "Service Layer", "Data Layer")',
+                ),
+              description: z
+                .string()
+                .optional()
+                .describe(
+                  'Description of the group purpose (e.g., "API entry point", "Business logic services")',
+                ),
+              x: z
+                .number()
+                .optional()
+                .describe(
+                  'X coordinate for the group box (will auto-generate if not provided)',
+                ),
+              y: z
+                .number()
+                .optional()
+                .describe(
+                  'Y coordinate for the group box (will auto-generate if not provided)',
+                ),
+              borderColor: z
+                .string()
+                .optional()
+                .describe(
+                  'Border color for the group box (e.g., "#607D8B", "#FF9800")',
+                ),
+            }),
+          )
+          .optional()
+          .describe(
+            'Array of design groups to visually organize related components with dashed borders',
+          ),
+      }),
+      func: async (input: UpdateDesignInput) => {
+        const {
+          designId,
+          name,
+          description,
+          items,
+          connections,
+          designGroups,
+        } = input;
+        try {
+          if (guard?.hasMutation && guard.designId) {
+            this.logger.warn(
+              `Skipping duplicate update_system_design call in same attempt, reusing designId: ${guard.designId}`,
+            );
+            return JSON.stringify({
+              success: true,
+              designId: guard.designId,
+              reused: true,
+              operation: guard.operation,
+              message:
+                'Design mutation already executed in this attempt. Reusing previously mutated designId.',
+            });
+          }
+
+          const current = await this.fetchDesignById(authToken, designId);
+          const currentDesign = current as unknown as Partial<Design>;
+
+          const currentItems: CreateDesignItem[] = (
+            Array.isArray(currentDesign.items) ? currentDesign.items : []
+          )
+            .filter(
+              (item): item is DesignItem => typeof item?.name === 'string',
+            )
+            .map((item) => {
+              const uidata =
+                item.uidata && typeof item.uidata === 'object'
+                  ? (item.uidata as {
+                      type?: unknown;
+                      x?: unknown;
+                      y?: unknown;
+                    })
+                  : undefined;
+
+              return {
+                name: item.name,
+                displayName:
+                  typeof item.displayName === 'string'
+                    ? item.displayName
+                    : undefined,
+                type:
+                  typeof item.type === 'string'
+                    ? item.type
+                    : typeof uidata?.type === 'string'
+                      ? uidata.type
+                      : 'other',
+                x: typeof uidata?.x === 'number' ? uidata.x : undefined,
+                y: typeof uidata?.y === 'number' ? uidata.y : undefined,
+                context: item.context,
+              };
+            });
+
+          const currentConnections: ExistingDesignConnectionSnapshot[] = (
+            Array.isArray(currentDesign.connections)
+              ? currentDesign.connections
+              : []
+          )
+            .filter(
+              (connection): connection is DesignConnection =>
+                typeof connection.from?.name === 'string' &&
+                typeof connection.to?.name === 'string',
+            )
+            .map((connection) => ({
+              from: connection.from?.name || '',
+              to: connection.to?.name || '',
+              label:
+                typeof connection.name === 'string'
+                  ? connection.name
+                  : typeof connection.label === 'string'
+                    ? connection.label
+                    : undefined,
+            }));
+
+          const normalizedIncoming = this.normalizeComponentNamesByType(
+            items,
+            connections || [],
+          );
+
+          let resilientItems = [...normalizedIncoming.items];
+          const incomingConnectionsCount =
+            normalizedIncoming.connections.length;
+          const itemShrinkThreshold = Math.max(
+            3,
+            Math.ceil(currentItems.length * 0.6),
+          );
+          const shouldPreserveCurrentShape =
+            (currentItems.length >= 6 &&
+              normalizedIncoming.items.length < itemShrinkThreshold) ||
+            (currentConnections.length >= 4 && incomingConnectionsCount === 0);
+
+          if (shouldPreserveCurrentShape) {
+            const incomingItemNames = new Set(
+              normalizedIncoming.items
+                .map((item) => item.name.toLowerCase())
+                .filter((name) => name.length > 0),
+            );
+            const preservedItems = currentItems.filter(
+              (item) => !incomingItemNames.has(item.name.toLowerCase()),
+            );
+            resilientItems = [...normalizedIncoming.items, ...preservedItems];
+
+            this.logger.warn(
+              `Update payload for ${designId} looked truncated or under-specified (${normalizedIncoming.items.length}/${currentItems.length} items, ${incomingConnectionsCount}/${currentConnections.length} connections). Preserving ${preservedItems.length} existing components.`,
+            );
+          }
+
+          let connectionsArray = [...normalizedIncoming.connections];
+          if (shouldPreserveCurrentShape) {
+            const availableItems = new Set(
+              resilientItems.map((item) => item.name.toLowerCase()),
+            );
+            const existingKeys = new Set(
+              connectionsArray.map(
+                (connection) =>
+                  `${connection.from.toLowerCase()}|${connection.to.toLowerCase()}|${(connection.label || '').toLowerCase()}`,
+              ),
+            );
+
+            const preservedConnections: CreateDesignConnection[] = [];
+            for (const connection of currentConnections) {
+              const fromKey = connection.from.toLowerCase();
+              const toKey = connection.to.toLowerCase();
+              if (!availableItems.has(fromKey) || !availableItems.has(toKey)) {
+                continue;
+              }
+
+              const key = `${fromKey}|${toKey}|${(connection.label || '').toLowerCase()}`;
+              if (existingKeys.has(key)) {
+                continue;
+              }
+
+              preservedConnections.push({
+                from: connection.from,
+                to: connection.to,
+                label: connection.label,
+              });
+              existingKeys.add(key);
+            }
+
+            if (preservedConnections.length > 0) {
+              connectionsArray = [...connectionsArray, ...preservedConnections];
+            }
+          }
+
+          this.logger.log(
+            `Updating design: ${designId} with ${resilientItems.length} items`,
+          );
+
+          const itemsWithLayout: LayoutItem[] =
+            this.generateLayout(resilientItems);
+
+          const formattedConnections = this.buildFormattedConnections(
+            connectionsArray,
+            itemsWithLayout,
+          );
+
+          const persistedItemsWithLayout = this.pruneOrphanTextBoxItems(
+            itemsWithLayout,
+            formattedConnections,
+          );
+
+          const formattedItems = persistedItemsWithLayout.map(
+            (item, index) => ({
+              id: this.generateTempId(item.name, index),
+              name: String(item.name),
+              displayName: String(item.displayName || item.name),
+              uidata: this.generateUIData(item, index),
+              context: this.normalizeItemContext(
+                item.context,
+                item.name,
+                item.type,
+              ),
+            }),
+          );
+
+          const formattedDesignGroups = this.buildDesignGroups(
+            this.resolveIncomingDesignGroups(designGroups, currentDesign),
+            persistedItemsWithLayout,
+          );
+
+          const currentContext =
+            current.context && typeof current.context === 'object'
+              ? (current.context as Record<string, unknown>)
+              : {};
+
+          const payload = {
+            name: String(
+              name ||
+                (typeof current.name === 'string' && current.name
+                  ? current.name
+                  : 'Generated Design'),
+            ),
+            description:
+              typeof description === 'string'
+                ? description
+                : typeof current.description === 'string'
+                  ? current.description
+                  : '',
+            thumbnail: current.thumbnail || null,
+            uidata: current.uidata || null,
+            context: currentContext,
+            items: formattedItems,
+            connections: formattedConnections,
+            designGroups: formattedDesignGroups,
+          };
+
+          await firstValueFrom(
+            this.httpService.put(
+              `${this.designServiceUrl}/api/v1/designs/${designId}`,
+              payload,
+              {
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                },
+              },
+            ),
+          );
+
+          if (guard) {
+            guard.hasMutation = true;
+            guard.designId = designId;
+            guard.operation = 'update';
+          }
+
+          return JSON.stringify({
+            success: true,
+            designId,
+            name: payload.name,
+            itemsCount: formattedItems.length,
+            connectionsCount: formattedConnections.length,
+            updated: true,
+          });
+        } catch (error) {
+          let errorMessage = 'Unknown error';
+          let errorDetails = '';
+
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          }
+
+          if (error && typeof error === 'object' && 'response' in error) {
+            const httpError = error as HttpError;
+            errorDetails = JSON.stringify({
+              status: httpError.response?.status,
+              statusText: httpError.response?.statusText,
+              data: httpError.response?.data,
+            });
+          }
+
+          const fullError = errorDetails || errorMessage;
+          this.logger.error(`Error updating design: ${fullError}`);
+
+          return JSON.stringify({
+            success: false,
+            error: 'Failed to update design',
             details: fullError,
           });
         }
@@ -871,6 +1323,235 @@ export class DesignToolsService {
     return `temp-${sanitizedName}-${index}-${timestamp}`;
   }
 
+  private buildDesignGroups(
+    groups: CreateDesignGroup[],
+    items: LayoutItem[],
+  ): Array<Record<string, unknown>> {
+    const drafts = groups.map((group, index) => {
+      const members = this.resolveGroupMembers(group, items);
+      const bounds = this.computeGroupBounds(group, members, index);
+      return {
+        group,
+        index,
+        members,
+        bounds,
+      };
+    });
+
+    const adjustedBounds = this.resolveDesignGroupOverlaps(
+      drafts.map((draft) => draft.bounds),
+      drafts.map((draft) => draft.members.length > 0),
+    );
+
+    return drafts.map((draft, index) => {
+      const bounds = adjustedBounds[index] || draft.bounds;
+
+      return {
+        id: this.generateGroupId(draft.group.name, draft.index),
+        name: String(draft.group.name),
+        displayName: String(draft.group.displayName || draft.group.name),
+        description: String(draft.group.description || ''),
+        uidata: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          borderColor:
+            draft.group.borderColor || this.getGroupColor(draft.index),
+          borderStyle: 'dashed',
+          borderThickness: 2,
+        },
+        designs: draft.members.map((item) => ({
+          name: item.name,
+          type: 'DesignItem',
+        })),
+      };
+    });
+  }
+
+  private resolveDesignGroupOverlaps(
+    bounds: Array<{ x: number; y: number; width: number; height: number }>,
+    hasMembers: boolean[],
+  ): Array<{ x: number; y: number; width: number; height: number }> {
+    const GAP = 24;
+    const MAX_PASSES = 12;
+    const resolved = bounds.map((box) => ({ ...box }));
+
+    const intersects = (
+      a: { x: number; y: number; width: number; height: number },
+      b: { x: number; y: number; width: number; height: number },
+    ): boolean => {
+      const ax2 = a.x + a.width;
+      const ay2 = a.y + a.height;
+      const bx2 = b.x + b.width;
+      const by2 = b.y + b.height;
+
+      return a.x < bx2 && ax2 > b.x && a.y < by2 && ay2 > b.y;
+    };
+
+    for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+      let moved = false;
+
+      for (let i = 0; i < resolved.length; i += 1) {
+        for (let j = i + 1; j < resolved.length; j += 1) {
+          const a = resolved[i];
+          const b = resolved[j];
+
+          if (!intersects(a, b)) {
+            continue;
+          }
+
+          const aAnchored = hasMembers[i] === true;
+          const bAnchored = hasMembers[j] === true;
+
+          // Never shift boundaries that are anchored to actual member items.
+          if (aAnchored && bAnchored) {
+            continue;
+          }
+
+          const moveIndex = bAnchored && !aAnchored ? i : j;
+          const fixedIndex = moveIndex === i ? j : i;
+          const fixed = resolved[fixedIndex];
+          const moving = resolved[moveIndex];
+
+          const moveDownBy = fixed.y + fixed.height + GAP - moving.y;
+          if (moveDownBy > 0) {
+            moving.y += moveDownBy;
+            moved = true;
+          }
+        }
+      }
+
+      if (!moved) {
+        break;
+      }
+    }
+
+    return resolved;
+  }
+
+  private resolveGroupMembers(
+    group: CreateDesignGroup,
+    items: LayoutItem[],
+  ): LayoutItem[] {
+    const signature = `${group.name} ${group.description || ''}`.toLowerCase();
+
+    const typeMatches = (item: LayoutItem): boolean => {
+      const type = item.type.toLowerCase();
+      const name = item.name.toLowerCase();
+
+      if (/client|frontend|presentation|user-facing|consumer/.test(signature)) {
+        return (
+          type === 'user' ||
+          type === 'web-app' ||
+          type === 'mobile-app' ||
+          type === 'frontend'
+        );
+      }
+
+      if (/gateway|edge|ingress/.test(signature)) {
+        return (
+          type === 'api-gateway' ||
+          type === 'gateway' ||
+          type === 'load-balancer' ||
+          type === 'firewall'
+        );
+      }
+
+      if (/service|business/.test(signature)) {
+        return (
+          type === 'microservice' ||
+          type === 'service' ||
+          type === 'backend' ||
+          type === 'lambda'
+        );
+      }
+
+      if (/data|storage|database|persistence/.test(signature)) {
+        return type === 'database' || type === 'storage';
+      }
+
+      if (/cache|caching/.test(signature)) {
+        return type === 'cache' || type === 'cdn';
+      }
+
+      if (/async|queue|messag|event|stream|processing/.test(signature)) {
+        return (
+          type === 'message-queue' ||
+          type === 'queue' ||
+          /queue|stream|kafka|sqs|worker|processor/.test(name)
+        );
+      }
+
+      if (
+        /telemetry|observability|monitor|metrics|logging|analytics/.test(
+          signature,
+        )
+      ) {
+        return (
+          type === 'monitor' ||
+          /telemetry|observability|monitor|metrics|logging|analytics/.test(name)
+        );
+      }
+
+      return false;
+    };
+
+    const matched = items.filter(typeMatches);
+    if (matched.length > 0) {
+      return matched;
+    }
+
+    // Fallback: include nodes close to the provided group anchor.
+    const anchorX = group.x ?? 100;
+    const anchorY = group.y ?? 50;
+    return items.filter(
+      (item) =>
+        Math.abs(item.x - anchorX) <= 260 && Math.abs(item.y - anchorY) <= 260,
+    );
+  }
+
+  private computeGroupBounds(
+    group: CreateDesignGroup,
+    members: LayoutItem[],
+    index: number,
+  ): { x: number; y: number; width: number; height: number } {
+    const fallbackX = group.x ?? 100 + index * 200;
+    const fallbackY = group.y ?? 50;
+
+    if (members.length === 0) {
+      return {
+        x: fallbackX,
+        y: fallbackY,
+        width: 280,
+        height: 180,
+      };
+    }
+
+    const PADDING_X = 40;
+    const PADDING_Y = 36;
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (const member of members) {
+      const style = this.getTypeStyles(member.type);
+      minX = Math.min(minX, member.x);
+      minY = Math.min(minY, member.y);
+      maxX = Math.max(maxX, member.x + style.width);
+      maxY = Math.max(maxY, member.y + style.height);
+    }
+
+    return {
+      x: Math.round(minX - PADDING_X),
+      y: Math.round(minY - PADDING_Y),
+      width: Math.round(Math.max(220, maxX - minX + PADDING_X * 2)),
+      height: Math.round(Math.max(140, maxY - minY + PADDING_Y * 2)),
+    };
+  }
+
   /**
    * Generate connection points (alternating pattern for better visual layout)
    */
@@ -880,6 +1561,275 @@ export class DesignToolsService {
       return points[index % 2 === 0 ? 0 : 2]; // right or bottom
     }
     return points[index % 2 === 0 ? 1 : 3]; // left or top
+  }
+
+  private buildFormattedConnections(
+    connections: CreateDesignConnection[],
+    items: LayoutItem[],
+  ): Array<Record<string, unknown>> {
+    const result: Array<Record<string, unknown>> = [];
+
+    for (const connection of connections) {
+      const fromResolved = this.resolveItemNameRef(connection.from, items);
+      const toResolved = this.resolveItemNameRef(connection.to, items);
+
+      if (!fromResolved || !toResolved) {
+        this.logger.warn(
+          `Skipping connection due to unresolved endpoint(s): from="${connection.from}" to="${connection.to}"`,
+        );
+        continue;
+      }
+
+      const connectionIndex = result.length;
+      result.push({
+        name: String(connection.label || 'Connection'),
+        connectionType: connection.connectionType || undefined,
+        from: { name: fromResolved, type: 'DesignItem' },
+        to: { name: toResolved, type: 'DesignItem' },
+        fromPoint: this.getConnectionPoint(connectionIndex, 'from'),
+        toPoint: this.getConnectionPoint(connectionIndex, 'to'),
+        uidata: this.generateConnectionUIData(
+          String(connection.label || 'Connection'),
+          connection.connectionType,
+        ),
+        context: connection.context,
+      });
+    }
+
+    return result;
+  }
+
+  private pruneOrphanTextBoxItems(
+    items: LayoutItem[],
+    formattedConnections: Array<Record<string, unknown>>,
+  ): LayoutItem[] {
+    if (items.length === 0) {
+      return items;
+    }
+
+    const connectedNames = new Set<string>();
+    for (const connection of formattedConnections) {
+      const fromObj =
+        connection.from && typeof connection.from === 'object'
+          ? (connection.from as { name?: unknown })
+          : undefined;
+      const toObj =
+        connection.to && typeof connection.to === 'object'
+          ? (connection.to as { name?: unknown })
+          : undefined;
+
+      if (typeof fromObj?.name === 'string') {
+        connectedNames.add(fromObj.name.toLowerCase());
+      }
+
+      if (typeof toObj?.name === 'string') {
+        connectedNames.add(toObj.name.toLowerCase());
+      }
+    }
+
+    const filtered = items.filter((item) => {
+      if (item.type.toLowerCase() !== 'text-box') {
+        return true;
+      }
+
+      return connectedNames.has(item.name.toLowerCase());
+    });
+
+    const removedCount = items.length - filtered.length;
+    if (removedCount > 0) {
+      this.logger.log(
+        `Pruned ${removedCount} orphan text-box item(s) before persisting design payload.`,
+      );
+    }
+
+    return filtered;
+  }
+
+  private normalizeComponentNamesByType(
+    items: CreateDesignItem[],
+    connections: CreateDesignConnection[],
+  ): { items: CreateDesignItem[]; connections: CreateDesignConnection[] } {
+    const serviceCapableTypes = new Set([
+      'microservice',
+      'service',
+      'backend',
+      'lambda',
+    ]);
+
+    const renameMap = new Map<string, string>();
+    const normalizedItems = items.map((item) => {
+      const trimmedName = String(item.name || '').trim();
+      const type = String(item.type || '').toLowerCase();
+
+      if (!trimmedName || serviceCapableTypes.has(type)) {
+        return item;
+      }
+
+      const renamed = trimmedName
+        .replace(/\bservices\b$/i, '')
+        .replace(/\bservice\b$/i, '')
+        .trim();
+
+      if (!renamed || renamed === trimmedName) {
+        return item;
+      }
+
+      renameMap.set(this.normalizeLabel(trimmedName), renamed);
+      return {
+        ...item,
+        name: renamed,
+        displayName: item.displayName || renamed,
+      };
+    });
+
+    const uniqueNames = new Set<string>();
+    const dedupedItems = normalizedItems.map((item) => {
+      const candidate = this.normalizeLabel(item.name);
+      if (!candidate || !uniqueNames.has(candidate)) {
+        if (candidate) {
+          uniqueNames.add(candidate);
+        }
+        return item;
+      }
+
+      const fallbackName = this.uniqueName(item.name, uniqueNames);
+      renameMap.set(this.normalizeLabel(item.name), fallbackName);
+      return {
+        ...item,
+        name: fallbackName,
+        displayName: item.displayName || fallbackName,
+      };
+    });
+
+    if (renameMap.size === 0) {
+      return { items, connections };
+    }
+
+    const normalizedConnections = connections.map((connection) => {
+      const fromKey = this.normalizeLabel(connection.from);
+      const toKey = this.normalizeLabel(connection.to);
+      return {
+        ...connection,
+        from: renameMap.get(fromKey) || connection.from,
+        to: renameMap.get(toKey) || connection.to,
+      };
+    });
+
+    this.logger.log(
+      `Normalized ${renameMap.size} non-compute component name(s) to remove redundant Service suffixes.`,
+    );
+
+    return {
+      items: dedupedItems,
+      connections: normalizedConnections,
+    };
+  }
+
+  private resolveIncomingDesignGroups(
+    incomingGroups: CreateDesignGroup[] | undefined,
+    currentDesign: Partial<Design>,
+  ): CreateDesignGroup[] {
+    if (Array.isArray(incomingGroups) && incomingGroups.length > 0) {
+      return incomingGroups;
+    }
+
+    const existing = Array.isArray(currentDesign.designGroups)
+      ? currentDesign.designGroups
+      : [];
+    if (existing.length === 0) {
+      return [];
+    }
+
+    const resolved: CreateDesignGroup[] = [];
+    for (const group of existing) {
+      const groupRecord =
+        group && typeof group === 'object' && !Array.isArray(group)
+          ? group
+          : null;
+      if (!groupRecord || typeof groupRecord.name !== 'string') {
+        continue;
+      }
+
+      const uidata =
+        groupRecord.uidata &&
+        typeof groupRecord.uidata === 'object' &&
+        !Array.isArray(groupRecord.uidata)
+          ? (groupRecord.uidata as Record<string, unknown>)
+          : null;
+
+      resolved.push({
+        name: groupRecord.name,
+        description:
+          typeof groupRecord.description === 'string'
+            ? groupRecord.description
+            : undefined,
+        x: typeof uidata?.x === 'number' ? uidata.x : undefined,
+        y: typeof uidata?.y === 'number' ? uidata.y : undefined,
+        borderColor:
+          typeof uidata?.borderColor === 'string'
+            ? uidata.borderColor
+            : undefined,
+      });
+    }
+
+    return resolved;
+  }
+
+  private uniqueName(base: string, existing: Set<string>): string {
+    let index = 2;
+    let candidate = `${base} ${index}`;
+    while (existing.has(this.normalizeLabel(candidate))) {
+      index += 1;
+      candidate = `${base} ${index}`;
+    }
+    existing.add(this.normalizeLabel(candidate));
+    return candidate;
+  }
+
+  private resolveItemNameRef(
+    rawName: string,
+    items: LayoutItem[],
+  ): string | null {
+    const target = this.normalizeLabel(rawName);
+    if (!target) {
+      return null;
+    }
+
+    const exact = items.find(
+      (item) => this.normalizeLabel(item.name) === target,
+    );
+    if (exact) {
+      return exact.name;
+    }
+
+    const inclusiveMatches = items.filter((item) => {
+      const normalized = this.normalizeLabel(item.name);
+      return normalized.includes(target) || target.includes(normalized);
+    });
+
+    if (inclusiveMatches.length === 1) {
+      return inclusiveMatches[0].name;
+    }
+
+    const tokenMatches = items.filter((item) => {
+      const normalized = this.normalizeLabel(item.name);
+      const targetTokens = target.split(' ').filter(Boolean);
+      const itemTokens = normalized.split(' ').filter(Boolean);
+      return targetTokens.every((token) => itemTokens.includes(token));
+    });
+
+    if (tokenMatches.length === 1) {
+      return tokenMatches[0].name;
+    }
+
+    return null;
+  }
+
+  private normalizeLabel(value: string): string {
+    return String(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
   }
 
   /**
@@ -974,6 +1924,39 @@ export class DesignToolsService {
     return Array.from(tags);
   }
 
+  private normalizeItemContext(
+    input: unknown,
+    itemName: string,
+    itemType: string,
+  ): EnrichedItemContext {
+    const fallback: EnrichedItemContext = {
+      purpose: `${itemName} handles ${itemType} responsibilities in the architecture.`,
+      limitations: `${itemName} has finite throughput and may require horizontal scaling under peak load.`,
+      alternatives: `Alternative managed or open-source ${itemType} services can be used based on compliance and cost.`,
+      scalingPlan: `Scale ${itemName} horizontally and apply caching/queueing where applicable to meet demand.`,
+    };
+
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return fallback;
+    }
+
+    const record = input as Record<string, unknown>;
+
+    const readString = (key: keyof EnrichedItemContext): string => {
+      const value = record[key];
+      return typeof value === 'string' && value.trim().length > 0
+        ? value.trim()
+        : fallback[key];
+    };
+
+    return {
+      purpose: readString('purpose'),
+      limitations: readString('limitations'),
+      alternatives: readString('alternatives'),
+      scalingPlan: readString('scalingPlan'),
+    };
+  }
+
   async fetchDesignById(
     authToken: string,
     designId: string,
@@ -1053,11 +2036,27 @@ export class DesignToolsService {
   /**
    * Get all tools as an array
    */
-  getAllTools(authToken: string): DynamicStructuredTool[] {
-    return [
+  getAllTools(
+    authToken: string,
+    mode: 'create' | 'update' | 'both' = 'both',
+  ): DynamicStructuredTool[] {
+    const mutationGuard: MutationSessionGuard = {
+      hasMutation: false,
+    };
+
+    const tools: DynamicStructuredTool[] = [
       this.getSearchExistingDesignsTool(authToken),
       this.getDesignByIdTool(authToken),
-      this.getCreateSystemDesignTool(authToken),
     ];
+
+    if (mode !== 'update') {
+      tools.push(this.getCreateSystemDesignTool(authToken, mutationGuard));
+    }
+
+    if (mode !== 'create') {
+      tools.push(this.getUpdateSystemDesignTool(authToken, mutationGuard));
+    }
+
+    return tools;
   }
 }

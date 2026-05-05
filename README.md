@@ -351,6 +351,8 @@ EVAL_AUTH_TOKEN=<supabase_jwt> npm run eval:agent
 
 - Dataset: `scripts/agent-eval.dataset.json`
 - Script: `scripts/agent-eval.ts`
+- Optional reference rubrics: `scripts/rubrics/*.json` (e.g. URL shortener rubric seeded from Gemini example)
+- Dataset entries can include `rubricPath` and `rubricMinCoverage` for intent-level coverage checks.
 
 ### Documentation
 
